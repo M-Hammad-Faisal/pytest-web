@@ -12,6 +12,8 @@ const state = {
   ws: null,
   wsConnected: false,
   reconnectDelay: 1000,
+  statusFilter: 'all',  // 'all' | 'passed' | 'failed' | 'skipped'
+  textFilter:   '',
 };
 
 const STATUS = {
@@ -282,6 +284,15 @@ function refreshRow(nodeid) {
 
   const expandBtn = row.querySelector('.expand-btn');
   expandBtn.hidden = !(t.longrepr && t.status === STATUS.FAILED);
+
+  // Status changed — re-evaluate filter visibility (so a test moving from
+  // running → failed appears under the "Failed" filter immediately)
+  row.hidden = !rowMatchesFilters(row);
+  const group = row.closest('.file-group');
+  if (group) {
+    const anyVisible = [...group.querySelectorAll('.test-row')].some(r => !r.hidden);
+    group.hidden = !anyVisible;
+  }
 }
 
 function toggleLongrepr(nodeid, row) {
@@ -319,12 +330,20 @@ function patchTotals(patch) {
 }
 
 // ── Select-all checkbox ───────────────────────────────────────────
+function visibleNodeids() {
+  return [...document.querySelectorAll('.test-row')]
+    .filter(r => !r.hidden)
+    .map(r => r.dataset.nodeid);
+}
+
 function syncSelectAllCheckbox() {
-  const all      = [...state.tests.values()];
-  const selected = all.filter(t => t.selected).length;
-  const sa       = $('select-all');
-  sa.checked       = selected === all.length;
-  sa.indeterminate = selected > 0 && selected < all.length;
+  // "Select all" reflects only the currently-visible tests, so toggling it
+  // while a filter is active selects/deselects only what the user can see.
+  const visible = visibleNodeids();
+  const sel     = visible.filter(id => state.tests.get(id)?.selected).length;
+  const sa      = $('select-all');
+  sa.checked       = visible.length > 0 && sel === visible.length;
+  sa.indeterminate = sel > 0 && sel < visible.length;
 }
 
 // ── Command preview ───────────────────────────────────────────────
@@ -374,15 +393,36 @@ function updateCommandPreview() {
 }
 
 // ── Filter ────────────────────────────────────────────────────────
-function applyFilter(query) {
-  const q = query.toLowerCase();
+function rowMatchesFilters(row) {
+  // Text filter (substring match on full nodeid)
+  if (state.textFilter) {
+    if (!row.dataset.nodeid.toLowerCase().includes(state.textFilter)) return false;
+  }
+  // Status filter — 'all' shows everything
+  if (state.statusFilter !== 'all') {
+    if (row.dataset.status !== state.statusFilter) return false;
+  }
+  return true;
+}
+
+function applyFilter() {
   for (const row of document.querySelectorAll('.test-row')) {
-    row.hidden = q !== '' && !row.dataset.nodeid.toLowerCase().includes(q);
+    row.hidden = !rowMatchesFilters(row);
   }
   for (const group of document.querySelectorAll('.file-group')) {
     const visible = [...group.querySelectorAll('.test-row')].some(r => !r.hidden);
     group.hidden = !visible;
   }
+  syncSelectAllCheckbox();
+}
+
+function setStatusFilter(next) {
+  // Click same filter again → reset to 'all'
+  state.statusFilter = (state.statusFilter === next) ? 'all' : next;
+  for (const el of document.querySelectorAll('.cnt')) {
+    el.dataset.active = (el.dataset.filter === state.statusFilter) ? 'true' : 'false';
+  }
+  applyFilter();
 }
 
 // ── Env vars ──────────────────────────────────────────────────────
@@ -404,8 +444,13 @@ function renderEnvVars() {
     keyInput.className   = 'env-key';
     keyInput.placeholder = 'NAME';
     keyInput.value       = ev.k;
+    // Track the raw value during typing; only split / re-render on blur or paste.
+    // Splitting on every keystroke would rebuild the DOM mid-typing and drop focus.
     keyInput.addEventListener('input', () => {
-      // If the user pasted "KEY=VALUE" into the key field, split it automatically
+      state.envVars[i].k = keyInput.value;
+      savePrefs();
+    });
+    const splitKey = () => {
       const raw = keyInput.value;
       const eq  = raw.indexOf('=');
       if (eq > 0) {
@@ -413,14 +458,16 @@ function renderEnvVars() {
         state.envVars[i].v = stripQuotes(raw.slice(eq + 1).trim());
         savePrefs();
         renderEnvVars();
-        return;
+        return true;
       }
-      state.envVars[i].k = raw;
+      state.envVars[i].k = raw.trim();
       savePrefs();
-    });
-    keyInput.addEventListener('blur', () => {
-      state.envVars[i].k = keyInput.value.trim();
-      savePrefs();
+      return false;
+    };
+    keyInput.addEventListener('blur', splitKey);
+    keyInput.addEventListener('paste', () => {
+      // Paste fires before the value updates; defer one tick.
+      setTimeout(splitKey, 0);
     });
 
     const eq = mk('span', 'env-eq', '=');
@@ -512,8 +559,12 @@ async function fetchTests() {
 }
 
 async function runSelected() {
+  // Only run tests that are BOTH checked AND currently visible under the
+  // active filter — so filtering to "Failed" and unchecking some lets the
+  // user re-run a focused subset without dragging hidden checked tests in.
+  const visible  = new Set(visibleNodeids());
   const selected = [...state.tests.entries()]
-    .filter(([, t]) => t.selected)
+    .filter(([id, t]) => t.selected && visible.has(id))
     .map(([id]) => id);
 
   if (selected.length === 0) { showError('No tests selected.'); return; }
@@ -648,13 +699,29 @@ function initListeners() {
   $('workers').addEventListener('input', () => { updateCommandPreview(); savePrefs(); });
 
   $('select-all').addEventListener('change', e => {
+    // Toggle only the currently-visible tests, preserving selections of
+    // hidden tests so switching filters doesn't lose prior state.
     const checked = e.target.checked;
-    for (const [, t] of state.tests) t.selected = checked;
-    for (const chk of document.querySelectorAll('.test-check')) chk.checked = checked;
+    const visible = new Set(visibleNodeids());
+    for (const [id, t] of state.tests) {
+      if (visible.has(id)) t.selected = checked;
+    }
+    for (const row of document.querySelectorAll('.test-row')) {
+      if (visible.has(row.dataset.nodeid)) {
+        row.querySelector('.test-check').checked = checked;
+      }
+    }
     updateCommandPreview();
   });
 
-  $('filter').addEventListener('input', e => applyFilter(e.target.value));
+  $('filter').addEventListener('input', e => {
+    state.textFilter = e.target.value.toLowerCase();
+    applyFilter();
+  });
+
+  for (const el of document.querySelectorAll('.cnt[data-filter]')) {
+    el.addEventListener('click', () => setStatusFilter(el.dataset.filter));
+  }
 
   $('btn-add-env').addEventListener('click', () => {
     state.envVars.push({ k: '', v: '' });

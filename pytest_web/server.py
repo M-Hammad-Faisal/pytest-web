@@ -250,6 +250,12 @@ async def run(body: RunRequest):
                 "running": 0,
             },
             "test_states": {},
+            # Track nodeids we've already counted as started/ended.
+            # In xdist, pytest_runtest_logreport fires once in the worker and
+            # is then re-fired in the master via report forwarding — without
+            # this dedup, every test would be counted twice in the totals.
+            "started":  set(),
+            "finished": set(),
         }
 
         asyncio.create_task(_stream_proc(p, run_id))
@@ -312,12 +318,18 @@ async def internal_event(request: Request):
 
     elif event == "test_start":
         nodeid = body["nodeid"]
+        if nodeid in current_run["started"]:
+            return {"ok": True}  # xdist duplicate
+        current_run["started"].add(nodeid)
         current_run["test_states"][nodeid] = "running"
         totals["running"] = totals.get("running", 0) + 1
         await broadcast({"type": "test_start", "run_id": run_id, "nodeid": nodeid})
 
     elif event == "test_end":
         nodeid = body["nodeid"]
+        if nodeid in current_run["finished"]:
+            return {"ok": True}  # xdist duplicate — master re-fires worker reports
+        current_run["finished"].add(nodeid)
         outcome = body.get("outcome", "failed")
         current_run["test_states"][nodeid] = outcome
         totals["running"] = max(0, totals.get("running", 0) - 1)

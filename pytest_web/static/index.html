@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>pytest-web</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=__PW_VERSION__">
 </head>
 <body>
 <div id="app">
@@ -70,6 +70,12 @@
         <span class="section-label">Env Vars</span>
         <button id="btn-add-env" class="btn btn-ghost btn-sm">+ Add</button>
       </div>
+      <div class="env-hint">
+        <span class="env-hint-label">Format:</span>
+        <code>NAME</code> &nbsp;<span class="env-hint-eq">=</span>&nbsp; <code>value</code>
+        &nbsp;·&nbsp; e.g.&nbsp; <code>DEV_EMAIL</code> = <code>usama@asd.asd</code>
+        &nbsp;·&nbsp; no quotes, no <code>=</code> in NAME
+      </div>
       <div id="env-list" class="env-list"></div>
     </div>
   </section>
@@ -125,6 +131,6 @@
   </div>
 
 </div><!-- #app -->
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=__PW_VERSION__"></script>
 </body>
 </html>

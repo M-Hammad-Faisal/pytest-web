@@ -122,10 +122,11 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 .param-builder {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-top: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
+.param-builder .section-label { flex-shrink: 0; white-space: nowrap; }
 .param-select {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -137,7 +138,8 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   outline: none;
   cursor: pointer;
   transition: border-color 0.15s;
-  max-width: 240px;
+  width: 220px;
+  flex-shrink: 0;
 }
 .param-select:focus { border-color: var(--accent); }
 .param-select option, .param-select optgroup {
@@ -145,13 +147,14 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   color: var(--text);
 }
 .param-value-input {
-  width: 180px;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
 }
 .param-value-input:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
+.param-builder .btn { flex-shrink: 0; }
 
 /* ── Env vars ──────────────────────────────────────────────────── */
 .env-section { margin-top: 10px; }
@@ -161,6 +164,22 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   gap: 8px;
   margin-bottom: 6px;
 }
+.env-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-family: var(--font-ui);
+}
+.env-hint code {
+  font-family: var(--font-mono);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--text-dim);
+}
+.env-hint-label { color: var(--text-dim); margin-right: 4px; }
+.env-hint-eq { color: var(--accent); font-family: var(--font-mono); }
 .env-list { display: flex; flex-direction: column; gap: 4px; }
 .env-row {
   display: flex;

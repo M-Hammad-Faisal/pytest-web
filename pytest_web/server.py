@@ -12,9 +12,11 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+from pytest_web import __version__ as PW_VERSION
 
 # ── Config (set by cli.py before uvicorn starts) ──────────────────
 HOST = os.environ.get("PYTEST_WEB_HOST", "127.0.0.1")
@@ -75,7 +77,66 @@ class RunRequest(BaseModel):
 
 @app.get("/")
 async def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("__PW_VERSION__", PW_VERSION))
+
+
+@app.get("/options")
+async def options():
+    """Parse `pytest --help` from the user's project to discover custom options
+    contributed by conftest.py / installed plugins (e.g. --browser, --headed).
+    """
+    try:
+        p = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "pytest", "--help",
+            cwd=PROJECT_CWD,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_bytes, _ = await p.communicate()
+    except Exception as e:
+        return {"options": [], "error": str(e)}
+
+    text = stdout_bytes.decode(errors="replace")
+    custom: list[dict] = []
+    seen: set[str] = set()
+
+    # `pytest --help` groups options under headers like "custom options:".
+    # We pick out option lines belonging to non-pytest-builtin groups.
+    builtin_groups = {
+        "general:", "reporting:", "collection:", "test session debugging and configuration:",
+        "logging:", "[pytest] ini-options in the first pytest.ini|tox.ini|setup.cfg|pyproject.toml file found:",
+        "environment variables:", "options:", "positional arguments:",
+    }
+    in_custom_group = False
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        # Group headers end with ':' and have no leading whitespace
+        if stripped.endswith(":") and raw_line and not raw_line.startswith(" "):
+            in_custom_group = stripped.lower() not in builtin_groups
+            continue
+        if not in_custom_group:
+            continue
+        # Option lines start with whitespace + '-'
+        if not raw_line.startswith(("  -", "  --")):
+            continue
+        # Extract the long option name (first token starting with --)
+        for tok in stripped.split():
+            tok = tok.rstrip(",")
+            if tok.startswith("--") and len(tok) > 2:
+                # Strip "=value" or "VALUE" hints — keep just the flag itself
+                name = tok.split("=", 1)[0]
+                if name in seen:
+                    break
+                seen.add(name)
+                # Heuristic: if next token after the option is uppercase or =VAL, it takes a value
+                takes_value = "=" in tok or any(
+                    t.isupper() and t.isalpha() for t in stripped.split()[1:2]
+                )
+                custom.append({"name": name, "type": "value" if takes_value else "flag"})
+                break
+
+    return {"options": custom}
 
 
 @app.post("/discover")

@@ -386,6 +386,13 @@ function applyFilter(query) {
 }
 
 // ── Env vars ──────────────────────────────────────────────────────
+function stripQuotes(s) {
+  if (s.length >= 2 && ((s[0] === '"' && s.endsWith('"')) || (s[0] === "'" && s.endsWith("'")))) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
+
 function renderEnvVars() {
   const list = $('env-list');
   list.innerHTML = '';
@@ -395,18 +402,41 @@ function renderEnvVars() {
     const keyInput       = mk('input');
     keyInput.type        = 'text';
     keyInput.className   = 'env-key';
-    keyInput.placeholder = 'KEY';
+    keyInput.placeholder = 'NAME';
     keyInput.value       = ev.k;
-    keyInput.addEventListener('input', () => { state.envVars[i].k = keyInput.value; savePrefs(); });
+    keyInput.addEventListener('input', () => {
+      // If the user pasted "KEY=VALUE" into the key field, split it automatically
+      const raw = keyInput.value;
+      const eq  = raw.indexOf('=');
+      if (eq > 0) {
+        state.envVars[i].k = raw.slice(0, eq).trim();
+        state.envVars[i].v = stripQuotes(raw.slice(eq + 1).trim());
+        savePrefs();
+        renderEnvVars();
+        return;
+      }
+      state.envVars[i].k = raw;
+      savePrefs();
+    });
+    keyInput.addEventListener('blur', () => {
+      state.envVars[i].k = keyInput.value.trim();
+      savePrefs();
+    });
 
     const eq = mk('span', 'env-eq', '=');
 
     const valInput       = mk('input');
     valInput.type        = 'text';
     valInput.className   = 'env-val';
-    valInput.placeholder = 'value';
+    valInput.placeholder = 'value (no quotes needed)';
     valInput.value       = ev.v;
     valInput.addEventListener('input', () => { state.envVars[i].v = valInput.value; savePrefs(); });
+    valInput.addEventListener('blur', () => {
+      // Strip accidental surrounding quotes — env vars don't need them
+      state.envVars[i].v = stripQuotes(valInput.value);
+      valInput.value = state.envVars[i].v;
+      savePrefs();
+    });
 
     const rm = mk('button', 'btn btn-ghost btn-xs env-rm', '✕');
     rm.addEventListener('click', () => { state.envVars.splice(i, 1); renderEnvVars(); savePrefs(); });
@@ -491,7 +521,8 @@ async function runSelected() {
 
   const envObj = {};
   for (const { k, v } of state.envVars) {
-    if (k.trim()) envObj[k.trim()] = v;
+    const key = k.trim();
+    if (key) envObj[key] = stripQuotes((v || '').trim());
   }
 
   try {
@@ -510,6 +541,10 @@ async function runSelected() {
     const data = await res.json();
     // Update command preview to show the exact command that's running
     if (data.command) $('command-text').textContent = data.command;
+    // Flip UI to running state immediately — don't wait on the WS round-trip
+    // (cancel button must work even if a webhook is delayed or dropped)
+    state.runId = data.run_id || null;
+    setRunningUI(true);
     savePrefs();
   } catch (e) {
     showError('Failed to start run: ' + e.message);
@@ -530,6 +565,44 @@ function setRunningUI(running) {
 }
 
 // ── Param builder ─────────────────────────────────────────────────
+async function loadProjectOptions() {
+  // Fetch project-specific pytest options (from conftest / plugins) and inject
+  // them as a "Project Options" optgroup so the dropdown reflects what's
+  // actually available in the user's project, not just the pytest defaults.
+  let opts = [];
+  try {
+    const res  = await fetch('/options');
+    const data = await res.json();
+    opts = data.options || [];
+  } catch (_) { return; }
+
+  if (!opts.length) return;
+
+  const select  = $('param-select');
+  // Drop any existing Project Options group (in case of re-fetch)
+  select.querySelectorAll('optgroup[data-project="1"]').forEach(g => g.remove());
+
+  // Skip options already present in the static dropdown so we don't duplicate
+  const existing = new Set(
+    [...select.querySelectorAll('option')].map(o => o.value)
+  );
+  const fresh = opts.filter(o => !existing.has(o.name));
+  if (!fresh.length) return;
+
+  const group = document.createElement('optgroup');
+  group.label = 'Project Options';
+  group.dataset.project = '1';
+  for (const o of fresh) {
+    const opt = document.createElement('option');
+    opt.value = o.name;
+    opt.dataset.type = o.type;
+    if (o.type === 'value') opt.dataset.ph = 'value';
+    opt.textContent = o.name;
+    group.appendChild(opt);
+  }
+  select.appendChild(group);
+}
+
 function syncParamValueInput() {
   const opt      = $('param-select').selectedOptions[0];
   const isFlag   = opt && opt.dataset.type === 'flag';
@@ -613,4 +686,5 @@ document.addEventListener('DOMContentLoaded', () => {
   initListeners();
   loadPrefs();
   initWS();
+  loadProjectOptions();
 });

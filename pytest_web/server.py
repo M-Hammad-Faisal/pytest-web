@@ -1,0 +1,308 @@
+import asyncio
+import json
+import os
+import shlex
+import signal
+import subprocess
+import sys
+import tempfile
+import uuid
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+# ── Config (set by cli.py before uvicorn starts) ──────────────────
+HOST = os.environ.get("PYTEST_WEB_HOST", "127.0.0.1")
+PORT = int(os.environ.get("PYTEST_WEB_PORT", "8000"))
+PROJECT_CWD = os.environ.get("PYTEST_WEB_CWD", os.getcwd())
+STATIC_DIR = Path(__file__).parent / "static"
+
+# ── Shared state (single-process, single-run-at-a-time) ──────────
+ws_clients: set[WebSocket] = set()
+current_run: Optional[dict] = None   # {run_id, totals, test_states}
+proc: Optional[asyncio.subprocess.Process] = None
+proc_lock: Optional[asyncio.Lock] = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global proc_lock
+    proc_lock = asyncio.Lock()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# ── Helpers ───────────────────────────────────────────────────────
+
+async def broadcast(msg: dict) -> None:
+    dead: set[WebSocket] = set()
+    for client in list(ws_clients):
+        try:
+            await client.send_json(msg)
+        except Exception:
+            dead.add(client)
+    ws_clients.difference_update(dead)
+
+
+def _build_subprocess_kwargs() -> dict:
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+# ── Request models ────────────────────────────────────────────────
+
+class DiscoverRequest(BaseModel):
+    args: str = ""
+
+
+class RunRequest(BaseModel):
+    nodeids: list[str]
+    workers: int = 1
+    args: str = ""
+    env: dict[str, str] = {}
+
+
+# ── Routes ────────────────────────────────────────────────────────
+
+@app.get("/")
+async def index():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.post("/discover")
+async def discover(body: DiscoverRequest):
+    extra_args = shlex.split(body.args) if body.args.strip() else []
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+    collect_file = tmp.name
+    tmp.close()
+
+    try:
+        cmd = [
+            sys.executable, "-m", "pytest",
+            "--collect-only", "-q",
+            "-p", "pytest_web.plugin",
+            *extra_args,
+        ]
+        env = {**os.environ, "PYTEST_WEB_COLLECT_FILE": collect_file}
+
+        p = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=PROJECT_CWD,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr_bytes = await p.communicate()
+
+        try:
+            with open(collect_file) as f:
+                nodeids = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            nodeids = []
+
+        # exit 5 = no tests collected (not an error)
+        if not nodeids and p.returncode not in (0, 5):
+            error_text = stderr_bytes.decode(errors="replace").strip()
+            return {"nodeids": [], "error": error_text or f"pytest exited {p.returncode}"}
+
+        return {"nodeids": nodeids}
+    finally:
+        try:
+            os.unlink(collect_file)
+        except OSError:
+            pass
+
+
+@app.post("/run")
+async def run(body: RunRequest):
+    global current_run, proc
+
+    async with proc_lock:
+        if current_run is not None:
+            raise HTTPException(status_code=409, detail="A run is already in progress")
+
+        extra_args = shlex.split(body.args) if body.args.strip() else []
+        run_id = uuid.uuid4().hex
+
+        cmd = [sys.executable, "-m", "pytest", *body.nodeids, *extra_args]
+        if body.workers > 1:
+            cmd += ["-n", str(body.workers)]
+        cmd += ["-p", "pytest_web.plugin"]
+
+        webhook = f"http://{HOST}:{PORT}/internal/event"
+        env = {
+            **os.environ,
+            **{str(k): str(v) for k, v in body.env.items()},
+            "PYTEST_WEB_WEBHOOK": webhook,
+            "PYTEST_WEB_RUN_ID": run_id,
+        }
+
+        p = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=PROJECT_CWD,
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            **_build_subprocess_kwargs(),
+        )
+        proc = p
+        current_run = {
+            "run_id": run_id,
+            "totals": {
+                "total": len(body.nodeids),
+                "passed": 0,
+                "failed": 0,
+                "skipped": 0,
+                "running": 0,
+            },
+            "test_states": {},
+        }
+
+        asyncio.create_task(_stream_proc(p, run_id))
+
+        # Build a readable display command (truncate if many nodeids)
+        n = len(body.nodeids)
+        if n <= 4:
+            id_part = body.nodeids
+        else:
+            id_part = body.nodeids[:3] + [f"...({n - 3} more)"]
+
+        display_cmd = " ".join(
+            ["pytest"] + id_part + extra_args
+            + (["-n", str(body.workers)] if body.workers > 1 else [])
+            + ["-p", "pytest_web.plugin"]
+        )
+        return {"run_id": run_id, "command": display_cmd}
+
+
+@app.post("/cancel")
+async def cancel():
+    global proc
+    if proc is None or proc.returncode is not None:
+        return {"cancelled": False}
+
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                check=False, capture_output=True,
+            )
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except (ProcessLookupError, OSError):
+        pass
+
+    return {"cancelled": True}
+
+
+@app.post("/internal/event")
+async def internal_event(request: Request):
+    global current_run
+    body = await request.json()
+    run_id = body.get("run_id")
+    event = body.get("event")
+
+    if not current_run or current_run.get("run_id") != run_id:
+        return {"ok": False}
+
+    totals = current_run["totals"]
+
+    if event == "session_start":
+        total = body.get("total", totals["total"])
+        totals["total"] = total
+        await broadcast({"type": "session_start", "run_id": run_id, "total": total})
+
+    elif event == "test_start":
+        nodeid = body["nodeid"]
+        current_run["test_states"][nodeid] = "running"
+        totals["running"] = totals.get("running", 0) + 1
+        await broadcast({"type": "test_start", "run_id": run_id, "nodeid": nodeid})
+
+    elif event == "test_end":
+        nodeid = body["nodeid"]
+        outcome = body.get("outcome", "failed")
+        current_run["test_states"][nodeid] = outcome
+        totals["running"] = max(0, totals.get("running", 0) - 1)
+        if outcome in ("passed", "failed", "skipped"):
+            totals[outcome] = totals.get(outcome, 0) + 1
+        await broadcast({
+            "type": "test_end",
+            "run_id": run_id,
+            "nodeid": nodeid,
+            "outcome": outcome,
+            "duration": body.get("duration"),
+            "longrepr": body.get("longrepr"),
+        })
+
+    return {"ok": True}
+
+
+@app.websocket("/ws")
+async def ws_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    ws_clients.add(websocket)
+
+    # Send a state snapshot so a refreshed browser can rebuild current state
+    await websocket.send_json({
+        "type": "snapshot",
+        "run_id": current_run["run_id"] if current_run else None,
+        "running": current_run is not None,
+        "totals": current_run["totals"] if current_run else {
+            "total": 0, "passed": 0, "failed": 0, "skipped": 0, "running": 0,
+        },
+        "test_states": current_run["test_states"] if current_run else {},
+    })
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_clients.discard(websocket)
+
+
+# ── Background streaming task ─────────────────────────────────────
+
+async def _stream_proc(p: asyncio.subprocess.Process, run_id: str) -> None:
+    global current_run, proc
+
+    async def _read(stream: asyncio.StreamReader, stream_name: str) -> None:
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            await broadcast({
+                "type": "log",
+                "run_id": run_id,
+                "stream": stream_name,
+                "line": line.decode(errors="replace").rstrip(),
+            })
+
+    await asyncio.gather(
+        _read(p.stdout, "stdout"),
+        _read(p.stderr, "stderr"),
+    )
+    await p.wait()
+
+    saved_totals: Optional[dict] = None
+    async with proc_lock:
+        if current_run and current_run.get("run_id") == run_id:
+            saved_totals = dict(current_run["totals"])
+            current_run = None
+            proc = None
+
+    await broadcast({
+        "type": "session_end",
+        "run_id": run_id,
+        "exit_status": p.returncode,
+        "totals": saved_totals or {},
+    })

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytest-web"
+version = "0.1.0"
+description = "Local web UI for running and monitoring pytest suites"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Usama", email = "talhajalal0084@gmail.com" }
+]
+keywords = ["pytest", "testing", "web", "ui", "runner"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pytest>=7.0",
+    "pytest-xdist>=3.0",
+]
+
+[project.urls]
+Homepage   = "https://github.com/usamaJ17/pytest-web"
+Repository = "https://github.com/usamaJ17/pytest-web"
+Issues     = "https://github.com/usamaJ17/pytest-web/issues"
+
+[project.scripts]
+pytest-web = "pytest_web.cli:main"
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["pytest_web*"]
+
+[tool.setuptools.package-data]
+pytest_web = ["static/*"]

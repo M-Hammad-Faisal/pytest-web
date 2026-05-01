@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pytest-web</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────── -->
+  <header id="header">
+    <div class="brand">⚗ pytest-web</div>
+    <div id="ws-status" class="ws-status" title="Disconnected" data-connected="false">●</div>
+  </header>
+
+  <!-- ── Config panel ───────────────────────────────────────── -->
+  <section class="config-panel">
+    <div class="config-row">
+      <div class="input-group flex-1">
+        <label for="args">Path / Args</label>
+        <input id="args" type="text"
+               placeholder="e.g.  tests/  -k api  --tb=short"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <button id="btn-fetch" class="btn btn-primary">Fetch Tests</button>
+    </div>
+
+    <div class="env-section">
+      <div class="env-header">
+        <span class="section-label">Env Vars</span>
+        <button id="btn-add-env" class="btn btn-ghost btn-sm">+ Add</button>
+      </div>
+      <div id="env-list" class="env-list"></div>
+    </div>
+  </section>
+
+  <!-- ── Command preview ────────────────────────────────────── -->
+  <div class="command-preview">
+    <span class="cmd-dollar">$</span>
+    <code id="command-text" class="cmd-text">pytest -p pytest_web.plugin</code>
+    <button id="btn-copy" class="btn btn-ghost btn-xs" title="Copy to clipboard">⎘</button>
+  </div>
+
+  <!-- ── Toolbar: summary + filter ──────────────────────────── -->
+  <div class="toolbar">
+    <div class="summary-counters">
+      <span id="cnt-total"   class="cnt cnt-total">0 tests</span>
+      <span id="cnt-passed"  class="cnt cnt-passed">0 passed</span>
+      <span id="cnt-failed"  class="cnt cnt-failed" data-nonzero="false">0 failed</span>
+      <span id="cnt-skipped" class="cnt cnt-skipped">0 skipped</span>
+    </div>
+    <div class="toolbar-right">
+      <input id="filter" type="text" placeholder="filter…" class="filter-input" autocomplete="off">
+      <label class="select-all-label">
+        <input type="checkbox" id="select-all" checked> All
+      </label>
+    </div>
+  </div>
+
+  <!-- ── Test list ──────────────────────────────────────────── -->
+  <main id="test-list" class="test-list">
+    <div class="empty-state" id="empty-state">
+      <p>Enter a path or args above and click <strong>Fetch Tests</strong>.</p>
+    </div>
+  </main>
+
+  <!-- ── Run bar (sticky footer) ────────────────────────────── -->
+  <div class="run-bar">
+    <div class="workers-group">
+      <label for="workers">Workers</label>
+      <input id="workers" type="number" min="1" max="32" value="1" class="workers-input">
+    </div>
+    <button id="btn-run" class="btn btn-run">▶&nbsp; Run Selected</button>
+    <button id="btn-cancel" class="btn btn-cancel" disabled>■&nbsp; Cancel</button>
+  </div>
+
+  <!-- ── Output log (collapsible) ───────────────────────────── -->
+  <div class="log-panel" id="log-panel">
+    <div class="log-header" id="log-toggle">
+      <span id="log-arrow">▸</span>
+      Output Log
+      <span id="log-line-count" class="log-count"></span>
+    </div>
+    <pre id="log-output" class="log-output" hidden></pre>
+  </div>
+
+</div><!-- #app -->
+<script src="/static/app.js"></script>
+</body>
+</html>

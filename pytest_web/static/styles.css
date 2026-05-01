@@ -118,6 +118,41 @@ input[type="number"]:focus { border-color: var(--accent); }
 input[type="text"]::placeholder { color: var(--text-muted); }
 input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 
+/* ── Param builder ─────────────────────────────────────────────── */
+.param-builder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.param-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 8px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  max-width: 240px;
+}
+.param-select:focus { border-color: var(--accent); }
+.param-select option, .param-select optgroup {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.param-value-input {
+  width: 180px;
+  flex-shrink: 0;
+}
+.param-value-input:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
 /* ── Env vars ──────────────────────────────────────────────────── */
 .env-section { margin-top: 10px; }
 .env-header {

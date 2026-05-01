@@ -123,6 +123,28 @@ async def discover(body: DiscoverRequest):
             pass
 
 
+def _strip_keyword_filters(args: list[str]) -> list[str]:
+    """Remove -k / -m flags from a run command.
+
+    When running by explicit node IDs, keyword/marker filters applied on top
+    will silently exclude those very tests if the names don't match the
+    expression (e.g. fetched with -k 26653 then ran tests named 21901/21906).
+    Node IDs already pinpoint exactly which tests to run — filters are noise.
+    """
+    result: list[str] = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-k", "-m"):
+            i += 2          # skip flag and its separate value
+        elif arg.startswith(("-k=", "-m=")):
+            i += 1          # skip combined -k=expr form
+        else:
+            result.append(arg)
+            i += 1
+    return result
+
+
 @app.post("/run")
 async def run(body: RunRequest):
     global current_run, proc
@@ -132,6 +154,7 @@ async def run(body: RunRequest):
             raise HTTPException(status_code=409, detail="A run is already in progress")
 
         extra_args = shlex.split(body.args) if body.args.strip() else []
+        extra_args = _strip_keyword_filters(extra_args)
         run_id = uuid.uuid4().hex
 
         cmd = [sys.executable, "-m", "pytest", *body.nodeids, *extra_args]
@@ -208,7 +231,11 @@ async def cancel():
 @app.post("/internal/event")
 async def internal_event(request: Request):
     global current_run
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        # Plugin timed out and disconnected before server read the body — ignore.
+        return {"ok": False}
     run_id = body.get("run_id")
     event = body.get("event")
 

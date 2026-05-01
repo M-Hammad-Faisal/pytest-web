@@ -17,6 +17,8 @@
 
   <!-- ── Config panel ───────────────────────────────────────── -->
   <section class="config-panel">
+
+    <!-- Main args bar -->
     <div class="config-row">
       <div class="input-group flex-1">
         <label for="args">Path / Args</label>
@@ -27,6 +29,42 @@
       <button id="btn-fetch" class="btn btn-primary">Fetch Tests</button>
     </div>
 
+    <!-- Param builder -->
+    <div class="param-builder">
+      <span class="section-label">Add Param</span>
+      <select id="param-select" class="param-select">
+        <optgroup label="Filtering">
+          <option value="-k"        data-type="value" data-ph="expression  e.g. api or login">-k &nbsp; keyword filter</option>
+          <option value="-m"        data-type="value" data-ph="marker  e.g. slow or smoke">-m &nbsp; marker filter</option>
+        </optgroup>
+        <optgroup label="Failure">
+          <option value="-x"        data-type="flag"                          >-x &nbsp; stop on first failure</option>
+          <option value="--maxfail" data-type="value" data-ph="e.g. 3"        >--maxfail &nbsp; stop after N failures</option>
+          <option value="--lf"      data-type="flag"                          >--lf &nbsp; re-run last failed only</option>
+          <option value="--ff"      data-type="flag"                          >--ff &nbsp; failed tests first</option>
+        </optgroup>
+        <optgroup label="Output">
+          <option value="--tb"      data-type="value" data-ph="short · long · no · line · auto">--tb &nbsp; traceback style</option>
+          <option value="-v"        data-type="flag"                          >-v &nbsp; verbose</option>
+          <option value="-s"        data-type="flag"                          >-s &nbsp; no output capture</option>
+          <option value="-q"        data-type="flag"                          >-q &nbsp; quiet</option>
+          <option value="--durations" data-type="value" data-ph="e.g. 10"    >--durations &nbsp; show N slowest</option>
+        </optgroup>
+        <optgroup label="Debug">
+          <option value="--pdb"     data-type="flag"                          >--pdb &nbsp; drop to debugger on fail</option>
+          <option value="--timeout" data-type="value" data-ph="seconds e.g. 30">--timeout &nbsp; per-test timeout</option>
+        </optgroup>
+        <optgroup label="Collection">
+          <option value="--ignore"  data-type="value" data-ph="path to ignore">--ignore &nbsp; exclude path</option>
+          <option value="--co"      data-type="flag"                          >--co &nbsp; collect only</option>
+        </optgroup>
+      </select>
+      <input id="param-value" type="text" class="param-value-input"
+             placeholder="value" autocomplete="off" spellcheck="false">
+      <button id="btn-add-param" class="btn btn-ghost btn-sm">Add →</button>
+    </div>
+
+    <!-- Env vars -->
     <div class="env-section">
       <div class="env-header">
         <span class="section-label">Env Vars</span>

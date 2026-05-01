@@ -248,9 +248,9 @@ function buildTestRow(nodeid) {
 
   const dot  = mk('span', 'status-dot');
 
-  // Show only the test portion (strip the file prefix) for readability
+  // Strip the file prefix; replace :: separators (class › method) for readability
   const parts    = nodeid.split('::');
-  const nameText = parts.length > 1 ? parts.slice(1).join('::') : nodeid;
+  const nameText = (parts.length > 1 ? parts.slice(1) : parts).join(' › ');
   const nameEl   = mk('span', 'test-name', nameText);
   nameEl.title   = nodeid;  // full id on hover
 
@@ -328,6 +328,20 @@ function syncSelectAllCheckbox() {
 }
 
 // ── Command preview ───────────────────────────────────────────────
+function stripKeywordFilters(argsStr) {
+  // Mirror server-side _strip_keyword_filters: remove -k / -m and their values.
+  const parts  = argsStr.trim().split(/\s+/);
+  const result = [];
+  let i = 0;
+  while (i < parts.length) {
+    const p = parts[i];
+    if (p === '-k' || p === '-m') { i += 2; }          // skip flag + value
+    else if (p.startsWith('-k=') || p.startsWith('-m=')) { i += 1; }
+    else { result.push(p); i++; }
+  }
+  return result.join(' ');
+}
+
 function updateCommandPreview() {
   if (state.tests.size === 0) {
     $('command-text').textContent = 'pytest -p pytest_web.plugin';
@@ -337,7 +351,8 @@ function updateCommandPreview() {
     .filter(([, t]) => t.selected)
     .map(([id]) => id);
 
-  const args    = $('args').value.trim();
+  const rawArgs = $('args').value.trim();
+  const args    = stripKeywordFilters(rawArgs);  // -k/-m stripped for run
   const workers = +$('workers').value;
   let preview   = 'pytest';
 
@@ -355,7 +370,6 @@ function updateCommandPreview() {
   }
 
   if (workers > 1) preview += ` -n ${workers}`;
-  preview += ' -p pytest_web.plugin';
   $('command-text').textContent = preview;
 }
 
@@ -515,6 +529,40 @@ function setRunningUI(running) {
   $('btn-run').textContent    = running ? '⏳  Running…' : '▶  Run Selected';
 }
 
+// ── Param builder ─────────────────────────────────────────────────
+function syncParamValueInput() {
+  const opt      = $('param-select').selectedOptions[0];
+  const isFlag   = opt && opt.dataset.type === 'flag';
+  const valInput = $('param-value');
+  valInput.disabled    = isFlag;
+  valInput.placeholder = isFlag ? '(no value needed)' : (opt && opt.dataset.ph) || 'value';
+  if (isFlag) valInput.value = '';
+}
+
+function addParam() {
+  const opt    = $('param-select').selectedOptions[0];
+  if (!opt) return;
+  const isFlag = opt.dataset.type === 'flag';
+  const name   = opt.value;
+  const value  = $('param-value').value.trim();
+
+  if (!isFlag && !value) {
+    $('param-value').focus();
+    return;
+  }
+
+  // Quote value if it contains spaces
+  const safeVal  = value.includes(' ') ? `"${value}"` : value;
+  const addition = isFlag ? name : `${name} ${safeVal}`;
+
+  const bar   = $('args');
+  bar.value   = bar.value.trim() ? bar.value.trimEnd() + ' ' + addition : addition;
+  if (!isFlag) $('param-value').value = '';
+  bar.focus();
+  updateCommandPreview();
+  savePrefs();
+}
+
 // ── Event wiring ──────────────────────────────────────────────────
 function initListeners() {
   $('btn-fetch').addEventListener('click', fetchTests);
@@ -539,6 +587,12 @@ function initListeners() {
     state.envVars.push({ k: '', v: '' });
     renderEnvVars();
   });
+
+  // Param builder
+  $('param-select').addEventListener('change', syncParamValueInput);
+  $('param-value').addEventListener('keydown', e => { if (e.key === 'Enter') addParam(); });
+  $('btn-add-param').addEventListener('click', addParam);
+  syncParamValueInput(); // set initial state
 
   $('btn-copy').addEventListener('click', () => {
     navigator.clipboard?.writeText($('command-text').textContent).then(() => {

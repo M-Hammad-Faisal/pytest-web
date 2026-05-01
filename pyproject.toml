@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytest-web"
-version = "0.1.0"
+version = "0.1.2"
 description = "Local web UI for running and monitoring pytest suites"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "Usama", email = "talhajalal0084@gmail.com" }
+    { name = "Usama", email = "usamajalal17@gmail.com" }
 ]
 keywords = ["pytest", "testing", "web", "ui", "runner"]
 classifiers = [

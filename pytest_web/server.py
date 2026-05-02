@@ -221,6 +221,10 @@ async def run(body: RunRequest):
         cmd = [sys.executable, "-m", "pytest", *body.nodeids, *extra_args]
         if body.workers > 1:
             cmd += ["-n", str(body.workers)]
+        else:
+            # Explicitly disable xdist so pytest.ini addopts like "-n 6" are
+            # overridden and tests run sequentially in a single process.
+            cmd += ["-p", "no:xdist"]
         cmd += ["-p", "pytest_web.plugin"]
 
         webhook = f"http://{HOST}:{PORT}/internal/event"

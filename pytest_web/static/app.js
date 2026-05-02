@@ -134,6 +134,7 @@ function onTestStart(msg) {
   if (t) { t.status = STATUS.RUNNING; refreshRow(msg.nodeid); }
   state.totals.running = (state.totals.running || 0) + 1;
   updateSummary();
+  applyFilter(); // running tests must always appear, even under a status filter
 }
 
 function onTestEnd(msg) {
@@ -150,6 +151,7 @@ function onTestEnd(msg) {
   if (msg.outcome === 'failed')  tot.failed  = (tot.failed  || 0) + 1;
   if (msg.outcome === 'skipped') tot.skipped = (tot.skipped || 0) + 1;
   updateSummary();
+  applyFilter(); // test moved to a terminal status — re-evaluate filter
 }
 
 function onSessionEnd(msg) {
@@ -164,6 +166,7 @@ function onSessionEnd(msg) {
     }
   }
   setRunningUI(false);
+  applyFilter(); // cancelled/idle tests may no longer match active filter
 }
 
 // ── Test list ─────────────────────────────────────────────────────
@@ -291,15 +294,6 @@ function refreshRow(nodeid) {
 
   const expandBtn = row.querySelector('.expand-btn');
   expandBtn.hidden = !(t.longrepr && t.status === STATUS.FAILED);
-
-  // Status changed — re-evaluate filter visibility (so a test moving from
-  // running → failed appears under the "Failed" filter immediately)
-  row.hidden = !rowMatchesFilters(row);
-  const group = row.closest('.file-group');
-  if (group) {
-    const anyVisible = [...group.querySelectorAll('.test-row')].some(r => !r.hidden);
-    group.hidden = !anyVisible;
-  }
 }
 
 function toggleLongrepr(nodeid, row) {
@@ -401,13 +395,16 @@ function updateCommandPreview() {
 
 // ── Filter ────────────────────────────────────────────────────────
 function rowMatchesFilters(row) {
-  // Text filter (substring match on full nodeid)
-  if (state.textFilter) {
-    if (!row.dataset.nodeid.toLowerCase().includes(state.textFilter)) return false;
-  }
-  // Status filter — 'all' shows everything
+  const nodeid = row.dataset.nodeid;
+  // Text filter
+  if (state.textFilter && !nodeid.toLowerCase().includes(state.textFilter)) return false;
+  // Status filter — read from state (authoritative), NOT from row.dataset.status (stale DOM)
   if (state.statusFilter !== 'all') {
-    if (row.dataset.status !== state.statusFilter) return false;
+    const t = state.tests.get(nodeid);
+    if (!t) return false;
+    // Always show the currently-executing test regardless of active filter
+    if (t.status === STATUS.RUNNING) return true;
+    if (t.status !== state.statusFilter) return false;
   }
   return true;
 }

@@ -6,10 +6,10 @@
   --bg-surface:   #1e1e2e;
   --bg-elevated:  #24243a;
   --bg-hover:     #282840;
-  --border:       #313150;
+  --border:       #363655;       /* was #313150 — slightly more visible */
   --text:         #cdd6f4;
-  --text-dim:     #6c7086;
-  --text-muted:   #45475a;
+  --text-dim:     #7f849c;       /* was #6c7086 — easier to read */
+  --text-muted:   #585b70;       /* was #45475a — less invisible */
   --accent:       #89b4fa;
   --green:        #a6e3a1;
   --red:          #f38ba8;
@@ -27,7 +27,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: 14px;              /* was 13px */
   line-height: 1.5;
   overflow: hidden;
 }
@@ -48,8 +48,8 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 44px;
-  padding: 0 16px;
+  height: 46px;
+  padding: 0 18px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -60,7 +60,7 @@ header {
   font-size: 14px;
   font-weight: 600;
   color: var(--accent);
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 .ws-status {
@@ -75,8 +75,11 @@ header {
 .config-panel {
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
-  padding: 12px 16px;
+  padding: 12px 18px 14px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;                    /* consistent spacing between sections */
 }
 
 .config-row {
@@ -94,8 +97,8 @@ header {
   font-size: 10px;
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
-  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-weight: 700;
 }
 .flex-1 { flex: 1; }
 
@@ -107,8 +110,8 @@ input[type="number"] {
   border-radius: var(--radius-sm);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 6px 10px;
+  font-size: 13px;              /* was 12px */
+  padding: 7px 10px;            /* was 6px — taller inputs */
   outline: none;
   transition: border-color 0.15s;
   width: 100%;
@@ -123,7 +126,6 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 10px;
   flex-wrap: nowrap;
 }
 .param-builder .section-label { flex-shrink: 0; white-space: nowrap; }
@@ -134,7 +136,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 12px;
-  padding: 6px 8px;
+  padding: 7px 8px;
   outline: none;
   cursor: pointer;
   transition: border-color 0.15s;
@@ -157,47 +159,50 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 .param-builder .btn { flex-shrink: 0; }
 
 /* ── Env vars ──────────────────────────────────────────────────── */
-.env-section { margin-top: 10px; }
+.env-section { display: flex; flex-direction: column; gap: 4px; }
 .env-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
 }
-.env-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-  font-family: var(--font-ui);
-}
-.env-hint code {
-  font-family: var(--font-mono);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 1px 5px;
-  color: var(--text-dim);
-}
-.env-hint-label { color: var(--text-dim); margin-right: 4px; }
-.env-hint-eq { color: var(--accent); font-family: var(--font-mono); }
-.env-list { display: flex; flex-direction: column; gap: 4px; }
-.env-row {
+.env-col-header {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  gap: 8px;
+  padding: 0 0 2px 0;
 }
-.env-key  { width: 140px; flex-shrink: 0; }
-.env-eq   { color: var(--text-muted); padding: 0 2px; font-family: var(--font-mono); }
-.env-val  { flex: 1; }
+.env-col-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+  flex: 1;
+}
+.env-col-label-rm { width: 26px; flex-shrink: 0; }
+.env-list { display: flex; flex-direction: column; gap: 4px; }
+.env-row  { display: flex; align-items: center; gap: 8px; }
+
+/* element+class (specificity 0-1-1) beats input[type="text"] (0-1-1) because
+   this rule appears later in the file — same specificity, last wins. */
+input.env-key {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+input.env-val {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
 
 /* ── Command preview ───────────────────────────────────────────── */
 .command-preview {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  padding: 7px 16px;
+  padding: 8px 18px;
   flex-shrink: 0;
 }
 .cmd-dollar {
@@ -222,7 +227,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 16px;
+  padding: 8px 18px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -231,20 +236,21 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 }
 .summary-counters {
   display: flex;
-  gap: 14px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 .cnt {
   font-family: var(--font-mono);
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
   user-select: none;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background 0.12s, border-color 0.12s, opacity 0.12s;
 }
-.cnt:hover { background: var(--bg-hover); }
+.cnt:hover { background: var(--bg-hover); border-color: var(--border); }
 .cnt[data-active="true"] {
   border-color: var(--border);
   background: var(--bg-elevated);
@@ -267,7 +273,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   gap: 5px;
   cursor: pointer;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   user-select: none;
 }
@@ -294,7 +300,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   color: var(--red);
   font-family: var(--font-mono);
   font-size: 12px;
-  margin: 8px 16px;
+  margin: 8px 18px;
   padding: 8px 12px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -305,7 +311,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 16px;
+  padding: 6px 18px;           /* was 5px */
   cursor: pointer;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
@@ -321,13 +327,18 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   font-size: 12px;
   color: var(--text-dim);
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .file-count {
   font-size: 11px;
   color: var(--text-muted);
   background: var(--bg);
+  border: 1px solid var(--border);
   padding: 1px 7px;
   border-radius: 10px;
+  flex-shrink: 0;
 }
 
 /* ── Test rows ─────────────────────────────────────────────────── */
@@ -335,9 +346,9 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 16px 4px 32px;
+  padding: 5px 18px 5px 34px;  /* was 4px/16px/4px/32px — more breathing room */
   border-bottom: 1px solid transparent;
-  min-height: 28px;
+  min-height: 32px;             /* was 28px */
   transition: background 0.1s;
 }
 .test-row:hover { background: var(--bg-hover); }
@@ -348,8 +359,8 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 
 /* Status dot */
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;                   /* was 8px */
+  height: 9px;
   border-radius: 50%;
   flex-shrink: 0;
   background: var(--text-muted);
@@ -371,7 +382,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 
 .test-name {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;              /* was 12px */
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -380,9 +391,9 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 }
 .test-duration {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;              /* was 11px */
   color: var(--text-muted);
-  min-width: 46px;
+  min-width: 50px;
   text-align: right;
   flex-shrink: 0;
 }
@@ -392,7 +403,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   color: var(--red);
   cursor: pointer;
   padding: 0 4px;
-  font-size: 11px;
+  font-size: 12px;              /* was 11px */
   flex-shrink: 0;
   line-height: 1;
 }
@@ -402,12 +413,12 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 .longrepr-detail {
   background: #160810;
   border-left: 3px solid #5a1a2a;
-  margin: 0 16px 2px 40px;
+  margin: 0 18px 2px 42px;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .longrepr-text {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;              /* was 11px */
   color: #d08090;
   padding: 8px 12px;
   white-space: pre-wrap;
@@ -421,7 +432,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 10px 18px;
   background: var(--bg-surface);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
@@ -431,10 +442,10 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   align-items: center;
   gap: 6px;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: 13px;              /* was 12px */
 }
 .workers-group label { white-space: nowrap; }
-.workers-input { width: 58px; }
+.workers-input { width: 60px; }
 
 /* ── Buttons ───────────────────────────────────────────────────── */
 .btn {
@@ -442,7 +453,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: 13px;              /* was 12px */
   font-weight: 500;
   padding: 6px 14px;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -461,8 +472,9 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   background: #162a20;
   border-color: #3a6a50;
   color: var(--green);
-  padding: 8px 22px;
+  padding: 8px 24px;
   font-size: 13px;
+  font-weight: 600;
 }
 .btn-run:hover:not(:disabled)    { background: #1c3428; border-color: var(--green); }
 
@@ -470,7 +482,7 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   background: #1e0e14;
   border-color: #5a2030;
   color: var(--red);
-  padding: 8px 16px;
+  padding: 8px 18px;
   font-size: 13px;
 }
 .btn-cancel:hover:not(:disabled) { background: #241018; border-color: var(--red); }
@@ -482,8 +494,8 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 }
 .btn-ghost:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
 
-.btn-sm  { padding: 4px 10px; font-size: 11px; }
-.btn-xs  { padding: 2px 7px; font-size: 11px; }
+.btn-sm  { padding: 4px 10px; font-size: 12px; }
+.btn-xs  { padding: 2px 7px;  font-size: 11px; }
 
 /* ── Log panel ─────────────────────────────────────────────────── */
 .log-panel {
@@ -498,24 +510,25 @@ input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 16px;
+  padding: 6px 18px;
   cursor: pointer;
   user-select: none;
   color: var(--text-dim);
   font-size: 12px;
+  font-weight: 600;
   flex-shrink: 0;
 }
 .log-header:hover { background: var(--bg-hover); }
 #log-arrow { font-size: 10px; color: var(--text-muted); }
-.log-count { color: var(--text-muted); font-size: 11px; }
+.log-count { color: var(--text-muted); font-size: 11px; font-weight: 400; }
 
 .log-output {
   font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 6px 16px 8px;
+  font-size: 12px;              /* was 11px */
+  padding: 6px 18px 8px;
   overflow-y: auto;
   flex: 1;
 }
-.log-line   { display: block; white-space: pre-wrap; word-break: break-all; line-height: 1.6; }
+.log-line   { display: block; white-space: pre-wrap; word-break: break-all; line-height: 1.7; }
 .log-stdout { color: var(--text-dim); }
 .log-stderr { color: #fab387; }

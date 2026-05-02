@@ -169,6 +169,13 @@ function onSessionEnd(msg) {
 // ── Test list ─────────────────────────────────────────────────────
 function buildTestList(nodeids) {
   state.tests.clear();
+  // Reset filters so the fresh list shows everything
+  state.statusFilter = 'all';
+  state.textFilter   = '';
+  $('filter').value  = '';
+  for (const el of document.querySelectorAll('.cnt[data-filter]')) {
+    el.dataset.active = (el.dataset.filter === 'all') ? 'true' : 'false';
+  }
   const container = $('test-list');
   container.innerHTML = '';
 
@@ -427,6 +434,7 @@ function setStatusFilter(next) {
 
 // ── Env vars ──────────────────────────────────────────────────────
 function stripQuotes(s) {
+  s = s.trim();
   if (s.length >= 2 && ((s[0] === '"' && s.endsWith('"')) || (s[0] === "'" && s.endsWith("'")))) {
     return s.slice(1, -1);
   }
@@ -436,59 +444,79 @@ function stripQuotes(s) {
 function renderEnvVars() {
   const list = $('env-list');
   list.innerHTML = '';
+
+  if (state.envVars.length === 0) return;
+
+  // Column header row
+  const header = mk('div', 'env-col-header');
+  header.innerHTML =
+    '<span class="env-col-label">Name</span>' +
+    '<span class="env-col-label">Value</span>' +
+    '<span class="env-col-label-rm"></span>';
+  list.appendChild(header);
+
   state.envVars.forEach((ev, i) => {
     const row = mk('div', 'env-row');
 
+    // ── Name field ────────────────────────────────────────────
     const keyInput       = mk('input');
     keyInput.type        = 'text';
     keyInput.className   = 'env-key';
-    keyInput.placeholder = 'NAME';
+    keyInput.placeholder = 'VARIABLE_NAME';
     keyInput.value       = ev.k;
-    // Track the raw value during typing; only split / re-render on blur or paste.
-    // Splitting on every keystroke would rebuild the DOM mid-typing and drop focus.
+    keyInput.autocomplete = 'off';
+    keyInput.spellcheck   = false;
     keyInput.addEventListener('input', () => {
+      // Save raw value while typing; split only when done (blur/paste).
       state.envVars[i].k = keyInput.value;
       savePrefs();
     });
-    const splitKey = () => {
+    const trySplitKey = () => {
       const raw = keyInput.value;
       const eq  = raw.indexOf('=');
       if (eq > 0) {
+        // User typed or pasted "NAME=value" into the name field — split it
         state.envVars[i].k = raw.slice(0, eq).trim();
-        state.envVars[i].v = stripQuotes(raw.slice(eq + 1).trim());
+        // Only overwrite value if it is currently empty
+        if (!state.envVars[i].v) {
+          state.envVars[i].v = stripQuotes(raw.slice(eq + 1));
+        }
         savePrefs();
         renderEnvVars();
-        return true;
+        return;
       }
       state.envVars[i].k = raw.trim();
       savePrefs();
-      return false;
     };
-    keyInput.addEventListener('blur', splitKey);
-    keyInput.addEventListener('paste', () => {
-      // Paste fires before the value updates; defer one tick.
-      setTimeout(splitKey, 0);
+    keyInput.addEventListener('blur',  trySplitKey);
+    keyInput.addEventListener('paste', () => setTimeout(trySplitKey, 0));
+
+    // ── Value field ───────────────────────────────────────────
+    const valInput        = mk('input');
+    valInput.type         = 'text';
+    valInput.className    = 'env-val';
+    valInput.placeholder  = 'value';
+    valInput.value        = ev.v;
+    valInput.autocomplete = 'off';
+    valInput.spellcheck   = false;
+    valInput.addEventListener('input', () => {
+      state.envVars[i].v = valInput.value;
+      savePrefs();
     });
-
-    const eq = mk('span', 'env-eq', '=');
-
-    const valInput       = mk('input');
-    valInput.type        = 'text';
-    valInput.className   = 'env-val';
-    valInput.placeholder = 'value (no quotes needed)';
-    valInput.value       = ev.v;
-    valInput.addEventListener('input', () => { state.envVars[i].v = valInput.value; savePrefs(); });
     valInput.addEventListener('blur', () => {
-      // Strip accidental surrounding quotes — env vars don't need them
-      state.envVars[i].v = stripQuotes(valInput.value);
-      valInput.value = state.envVars[i].v;
+      // Strip accidental surrounding quotes — shell quotes are not needed here
+      const clean = stripQuotes(valInput.value);
+      state.envVars[i].v = clean;
+      valInput.value = clean;
       savePrefs();
     });
 
+    // ── Delete button ─────────────────────────────────────────
     const rm = mk('button', 'btn btn-ghost btn-xs env-rm', '✕');
+    rm.title = 'Remove';
     rm.addEventListener('click', () => { state.envVars.splice(i, 1); renderEnvVars(); savePrefs(); });
 
-    row.append(keyInput, eq, valInput, rm);
+    row.append(keyInput, valInput, rm);
     list.appendChild(row);
   });
 }

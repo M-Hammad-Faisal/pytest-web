@@ -224,9 +224,21 @@ async def run(body: RunRequest):
         cmd += ["-p", "pytest_web.plugin"]
 
         webhook = f"http://{HOST}:{PORT}/internal/event"
+        # Safety: if a key was sent as "NAME=value" split it before applying.
+        clean_env: dict[str, str] = {}
+        for k, v in body.env.items():
+            k = str(k).strip()
+            v = str(v).strip().strip('"').strip("'")
+            if '=' in k:
+                k, _, v = k.partition('=')
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+            if k:
+                clean_env[k] = v
+
         env = {
             **os.environ,
-            **{str(k): str(v) for k, v in body.env.items()},
+            **clean_env,
             "PYTEST_WEB_WEBHOOK": webhook,
             "PYTEST_WEB_RUN_ID": run_id,
         }

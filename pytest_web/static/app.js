@@ -14,6 +14,13 @@ const state = {
   reconnectDelay: 1000,
   statusFilter: 'all',  // 'all' | 'passed' | 'failed' | 'skipped'
   textFilter:   '',
+  allure: {
+    available: false,
+    detectedDir: '',
+    serving: false,
+    url: null,
+    loading: false,
+  },
 };
 
 const STATUS = {
@@ -33,9 +40,10 @@ const mk = (tag, cls, text) => {
 // ── Preferences (localStorage) ────────────────────────────────────
 function loadPrefs() {
   try {
-    $('args').value    = localStorage.getItem('pw.args')    || '';
-    $('workers').value = localStorage.getItem('pw.workers') || 1;
-    state.envVars      = JSON.parse(localStorage.getItem('pw.envVars') || '[]');
+    $('args').value       = localStorage.getItem('pw.args')      || '';
+    $('workers').value    = localStorage.getItem('pw.workers')   || 1;
+    $('allure-dir').value = localStorage.getItem('pw.allureDir') || '';
+    state.envVars         = JSON.parse(localStorage.getItem('pw.envVars') || '[]');
     renderEnvVars();
     updateCommandPreview();
   } catch (_) {}
@@ -716,6 +724,88 @@ function addParam() {
   savePrefs();
 }
 
+// ── Allure report ─────────────────────────────────────────────────
+async function loadAllureStatus() {
+  try {
+    const res  = await fetch('/allure/status');
+    const data = await res.json();
+    state.allure.available    = data.available;
+    state.allure.detectedDir  = data.detected_dir || '';
+    state.allure.serving      = data.serving;
+    // Pre-fill dir input from detection only if user hasn't set one
+    if (!$('allure-dir').value && state.allure.detectedDir) {
+      $('allure-dir').value = state.allure.detectedDir;
+    }
+    updateAllureUI();
+  } catch (_) {}
+}
+
+function updateAllureUI() {
+  const btn    = $('btn-allure-open');
+  const stopBtn = $('btn-allure-stop');
+  const urlEl  = $('allure-url');
+
+  if (!state.allure.available) {
+    btn.disabled  = true;
+    btn.title     = 'allure command not found on PATH';
+    stopBtn.hidden = true;
+    urlEl.hidden   = true;
+    return;
+  }
+
+  const hasDir = !!($('allure-dir').value.trim() || state.allure.detectedDir);
+  btn.disabled   = state.allure.loading || !hasDir;
+  btn.title      = hasDir ? '' : 'Enter the allure results directory';
+  btn.textContent = state.allure.loading ? 'Generating…' : 'Open Report';
+  stopBtn.hidden  = !state.allure.serving;
+
+  if (state.allure.url) {
+    urlEl.hidden      = false;
+    urlEl.href        = state.allure.url;
+    urlEl.textContent = state.allure.url;
+  } else {
+    urlEl.hidden = true;
+  }
+}
+
+async function openAllureReport() {
+  const dir = $('allure-dir').value.trim() || state.allure.detectedDir;
+  if (!dir) return;
+
+  state.allure.loading = true;
+  state.allure.url     = null;
+  hideError();
+  updateAllureUI();
+
+  try {
+    const res  = await fetch('/allure/open', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ results_dir: dir }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showError('Allure: ' + (data.detail || 'Failed')); return; }
+
+    state.allure.serving = true;
+    state.allure.url     = data.url || null;
+    localStorage.setItem('pw.allureDir', dir);
+  } catch (e) {
+    showError('Allure: ' + e.message);
+  } finally {
+    state.allure.loading = false;
+    updateAllureUI();
+  }
+}
+
+async function stopAllureReport() {
+  try {
+    await fetch('/allure/stop', { method: 'POST' });
+  } catch (_) {}
+  state.allure.serving = false;
+  state.allure.url     = null;
+  updateAllureUI();
+}
+
 // ── Event wiring ──────────────────────────────────────────────────
 function initListeners() {
   $('btn-fetch').addEventListener('click', fetchTests);
@@ -775,6 +865,13 @@ function initListeners() {
     $('log-output').hidden     = !state.logOpen;
     $('log-arrow').textContent = state.logOpen ? '▾' : '▸';
   });
+
+  $('btn-allure-open').addEventListener('click', openAllureReport);
+  $('btn-allure-stop').addEventListener('click', stopAllureReport);
+  $('allure-dir').addEventListener('input', () => {
+    localStorage.setItem('pw.allureDir', $('allure-dir').value.trim());
+    updateAllureUI();
+  });
 }
 
 // ── Boot ──────────────────────────────────────────────────────────
@@ -783,4 +880,5 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPrefs();
   initWS();
   loadProjectOptions();
+  loadAllureStatus();
 });

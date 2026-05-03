@@ -116,6 +116,17 @@
     <button id="btn-cancel" class="btn btn-cancel" disabled>■&nbsp; Cancel</button>
   </div>
 
+  <!-- ── Allure report bar ─────────────────────────────────── -->
+  <div class="allure-bar" id="allure-bar">
+    <span class="allure-label">Allure</span>
+    <input id="allure-dir" type="text" class="allure-dir-input"
+           placeholder="results dir (auto-detected)" autocomplete="off" spellcheck="false">
+    <button id="btn-allure-open" class="btn btn-ghost btn-sm" disabled
+            title="Checking allure…">Open Report</button>
+    <button id="btn-allure-stop" class="btn btn-ghost btn-sm" hidden>Stop</button>
+    <a id="allure-url" class="allure-url-link" hidden target="_blank" rel="noopener noreferrer"></a>
+  </div>
+
   <!-- ── Output log (collapsible) ───────────────────────────── -->
   <div class="log-panel" id="log-panel">
     <div class="log-header" id="log-toggle">

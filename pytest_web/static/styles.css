@@ -537,3 +537,39 @@ input.env-val {
 .log-line   { display: block; white-space: pre-wrap; word-break: break-all; line-height: 1.7; }
 .log-stdout { color: var(--text-dim); }
 .log-stderr { color: #fab387; }
+
+/* ── Allure bar ────────────────────────────────────────────────── */
+.allure-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 18px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.allure-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+input.allure-dir-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.allure-url-link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+  flex-shrink: 1;
+}
+.allure-url-link:hover { text-decoration: underline; }

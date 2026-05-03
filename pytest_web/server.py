@@ -1,7 +1,10 @@
 import asyncio
+import configparser
 import json
 import os
+import re
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -30,11 +33,21 @@ current_run: Optional[dict] = None   # {run_id, totals, test_states}
 proc: Optional[asyncio.subprocess.Process] = None
 proc_lock: Optional[asyncio.Lock] = None
 
+# ── Allure state (independent of test runner) ─────────────────────
+allure_proc: Optional[asyncio.subprocess.Process] = None
+allure_lock: Optional[asyncio.Lock] = None
+
+# Regex to extract --alluredir path from pytest addopts
+_ALLUREDIR_RE = re.compile(r'--alluredir[= ](\S+)')
+# Regex to find a URL in allure server output
+_URL_RE = re.compile(r'https?://[^\s<>]+')
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global proc_lock
-    proc_lock = asyncio.Lock()
+    global proc_lock, allure_lock
+    proc_lock  = asyncio.Lock()
+    allure_lock = asyncio.Lock()
     yield
 
 
@@ -308,6 +321,207 @@ async def cancel():
         pass
 
     return {"cancelled": True}
+
+
+# ── Allure helpers ────────────────────────────────────────────────
+
+def _detect_allure_dir() -> Optional[str]:
+    """Parse pytest config files to find the --alluredir path."""
+    cwd = Path(PROJECT_CWD)
+
+    def _search(text: str) -> Optional[str]:
+        m = _ALLUREDIR_RE.search(text)
+        if not m:
+            return None
+        # Strip trailing quotes/commas (present when path is inside a TOML list)
+        return m.group(1).strip('"\'').rstrip(',')
+
+    # pytest.ini  →  [pytest] addopts
+    for ini_path in [cwd / "pytest.ini", cwd / "tox.ini"]:
+        if ini_path.exists():
+            cp = configparser.ConfigParser()
+            try:
+                cp.read(ini_path)
+                result = _search(cp.get("pytest", "addopts", fallback=""))
+                if result:
+                    return result
+            except Exception:
+                pass
+
+    # setup.cfg  →  [tool:pytest] addopts
+    cfg = cwd / "setup.cfg"
+    if cfg.exists():
+        cp = configparser.ConfigParser()
+        try:
+            cp.read(cfg)
+            result = _search(cp.get("tool:pytest", "addopts", fallback=""))
+            if result:
+                return result
+        except Exception:
+            pass
+
+    # pyproject.toml  →  scan the full text (handles string & list forms)
+    toml = cwd / "pyproject.toml"
+    if toml.exists():
+        try:
+            result = _search(toml.read_text(encoding="utf-8"))
+            if result:
+                return result
+        except Exception:
+            pass
+
+    return None
+
+
+async def _capture_allure_url(p: asyncio.subprocess.Process, timeout: float = 15.0) -> Optional[str]:
+    """Read allure stdout/stderr until we find a URL or give up."""
+    found: list[str] = []
+
+    async def scan(stream: asyncio.StreamReader) -> None:
+        try:
+            loop     = asyncio.get_running_loop()
+            deadline = loop.time() + timeout
+            while not found:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    return
+                try:
+                    line = await asyncio.wait_for(
+                        stream.readline(), timeout=min(remaining, 2.0)
+                    )
+                except asyncio.TimeoutError:
+                    return
+                if not line:
+                    return
+                m = _URL_RE.search(line.decode(errors="replace"))
+                if m:
+                    found.append(m.group(0).rstrip(".>"))
+                    return
+        except (asyncio.CancelledError, Exception):
+            return
+
+    tasks = [
+        asyncio.create_task(scan(s))
+        for s in (p.stdout, p.stderr) if s
+    ]
+    if not tasks:
+        return None
+
+    await asyncio.wait(tasks, timeout=timeout + 1)
+    for t in tasks:
+        t.cancel()
+        try:
+            await t
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    return found[0] if found else None
+
+
+async def _kill_allure() -> None:
+    """Kill the current allure process if running. Must be called under allure_lock."""
+    global allure_proc
+    if allure_proc is None or allure_proc.returncode is not None:
+        return
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(allure_proc.pid)],
+                check=False, capture_output=True,
+            )
+        else:
+            os.killpg(os.getpgid(allure_proc.pid), signal.SIGTERM)
+    except (ProcessLookupError, OSError):
+        pass
+    try:
+        await asyncio.wait_for(allure_proc.wait(), timeout=3.0)
+    except asyncio.TimeoutError:
+        pass
+    allure_proc = None
+
+
+# ── Allure routes ─────────────────────────────────────────────────
+
+@app.get("/allure/status")
+async def allure_status():
+    return {
+        "available":    shutil.which("allure") is not None,
+        "detected_dir": _detect_allure_dir(),
+        "serving":      allure_proc is not None and allure_proc.returncode is None,
+    }
+
+
+class AllureOpenRequest(BaseModel):
+    results_dir: str
+
+
+@app.post("/allure/open")
+async def allure_open(body: AllureOpenRequest):
+    global allure_proc
+
+    if not shutil.which("allure"):
+        raise HTTPException(400, "allure command not found on PATH")
+
+    results_path = Path(body.results_dir)
+    if not results_path.is_absolute():
+        results_path = Path(PROJECT_CWD) / results_path
+
+    if not results_path.exists():
+        raise HTTPException(400, f"Results directory not found: {results_path}")
+
+    report_path = results_path.parent / "allure-report"
+
+    # Hold the lock for the entire kill → generate → start sequence so that
+    # a second "Open Report" click cannot race and leak an orphaned process.
+    async with allure_lock:
+        await _kill_allure()
+
+        # Copy history from previous report → results dir (enables trend graphs)
+        history_src = report_path / "history"
+        history_dst = results_path / "history"
+        if history_src.exists():
+            try:
+                if history_dst.exists():
+                    shutil.rmtree(history_dst)
+                shutil.copytree(str(history_src), str(history_dst))
+            except Exception:
+                pass  # history copy failure is non-fatal
+
+        # Generate the report (blocking but non-fatal to hold the lock here —
+        # allure_lock is only used by allure routes, not the test runner)
+        gen = await asyncio.create_subprocess_exec(
+            "allure", "generate", str(results_path), "-o", str(report_path), "--clean",
+            cwd=PROJECT_CWD,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr_bytes = await gen.communicate()
+        if gen.returncode != 0:
+            err = stderr_bytes.decode(errors="replace").strip()
+            raise HTTPException(500, f"allure generate failed: {err}")
+
+        # Serve the generated report
+        p = await asyncio.create_subprocess_exec(
+            "allure", "open", str(report_path),
+            cwd=PROJECT_CWD,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            **_build_subprocess_kwargs(),
+        )
+        allure_proc = p
+
+    # URL capture is outside the lock — just reads from the process stdout/stderr
+    url = await _capture_allure_url(p)
+    return {"url": url, "serving": True}
+
+
+@app.post("/allure/stop")
+async def allure_stop():
+    async with allure_lock:
+        if allure_proc is None or allure_proc.returncode is not None:
+            return {"stopped": False}
+        await _kill_allure()
+    return {"stopped": True}
 
 
 @app.post("/internal/event")

@@ -100,17 +100,19 @@ function onSnapshot(msg) {
     const t = state.tests.get(nodeid);
     if (t) { t.status = status; refreshRow(nodeid); }
   }
-  patchTotals(msg.totals);
+  recomputeTotals();
   setRunningUI(true);
 }
 
 function onSessionStart(msg) {
   state.running = true;
   state.runId   = msg.run_id;
-  // Mark selected idle tests as queued; don't overwrite tests already in flight
-  const terminal = new Set([STATUS.PASSED, STATUS.FAILED, STATUS.SKIPPED]);
+  // Selected tests being re-run reset to QUEUED (regardless of prior status —
+  // user explicitly chose to run them again, so the prior outcome no longer
+  // applies). Unselected tests keep their old status, so the counter history
+  // for tests not in this run is preserved.
   for (const [nodeid, t] of state.tests) {
-    if (t.selected && !terminal.has(t.status)) {
+    if (t.selected) {
       t.status   = STATUS.QUEUED;
       t.duration = null;
       t.longrepr = null;
@@ -120,8 +122,7 @@ function onSessionStart(msg) {
       if (detail && detail.classList.contains('longrepr-detail')) detail.remove();
     }
   }
-  state.totals = { total: msg.total, passed: 0, failed: 0, skipped: 0, running: 0 };
-  updateSummary();
+  recomputeTotals();
   setRunningUI(true);
   // Clear log for the new run
   $('log-output').textContent = '';
@@ -132,8 +133,7 @@ function onSessionStart(msg) {
 function onTestStart(msg) {
   const t = state.tests.get(msg.nodeid);
   if (t) { t.status = STATUS.RUNNING; refreshRow(msg.nodeid); }
-  state.totals.running = (state.totals.running || 0) + 1;
-  updateSummary();
+  recomputeTotals();
   applyFilter(); // running tests must always appear, even under a status filter
 }
 
@@ -145,28 +145,24 @@ function onTestEnd(msg) {
     t.longrepr = msg.longrepr || null;
     refreshRow(msg.nodeid);
   }
-  const tot = state.totals;
-  tot.running = Math.max(0, (tot.running || 0) - 1);
-  if (msg.outcome === 'passed')  tot.passed  = (tot.passed  || 0) + 1;
-  if (msg.outcome === 'failed')  tot.failed  = (tot.failed  || 0) + 1;
-  if (msg.outcome === 'skipped') tot.skipped = (tot.skipped || 0) + 1;
-  updateSummary();
+  recomputeTotals();
   applyFilter(); // test moved to a terminal status — re-evaluate filter
 }
 
-function onSessionEnd(msg) {
+function onSessionEnd(_msg) {
   state.running = false;
   state.runId   = null;
-  if (msg.totals) { state.totals = msg.totals; updateSummary(); }
-  // Any tests still queued/running were cancelled — reset them
+  // Any tests still queued/running when the run ended were cancelled — reset
+  // them to IDLE so they don't pollute counter history with a stale running state
   for (const [nodeid, t] of state.tests) {
     if (t.status === STATUS.QUEUED || t.status === STATUS.RUNNING) {
       t.status = STATUS.IDLE;
       refreshRow(nodeid);
     }
   }
+  recomputeTotals();
   setRunningUI(false);
-  applyFilter(); // cancelled/idle tests may no longer match active filter
+  applyFilter();
 }
 
 // ── Test list ─────────────────────────────────────────────────────
@@ -211,8 +207,7 @@ function buildTestList(nodeids) {
   }
   container.appendChild(frag);
 
-  state.totals = { total: nodeids.length, passed: 0, failed: 0, skipped: 0, running: 0 };
-  updateSummary();
+  recomputeTotals(); // all tests are IDLE → counters all zero, total = nodeids.length
   syncSelectAllCheckbox();
   updateCommandPreview();
 }
@@ -315,6 +310,21 @@ function toggleLongrepr(nodeid, row) {
 }
 
 // ── Summary counters ──────────────────────────────────────────────
+function recomputeTotals() {
+  // Counters reflect the CURRENT status of every test in the list. They
+  // accumulate across runs (e.g. test A passed in run 1, test B failed in
+  // run 2 → "1 passed · 1 failed") and only fully reset on Fetch Tests.
+  const tot = { total: state.tests.size, passed: 0, failed: 0, skipped: 0, running: 0 };
+  for (const [, t] of state.tests) {
+    if      (t.status === STATUS.PASSED)  tot.passed++;
+    else if (t.status === STATUS.FAILED)  tot.failed++;
+    else if (t.status === STATUS.SKIPPED) tot.skipped++;
+    else if (t.status === STATUS.RUNNING) tot.running++;
+  }
+  state.totals = tot;
+  updateSummary();
+}
+
 function updateSummary() {
   const { total, passed, failed, skipped } = state.totals;
   $('cnt-total').textContent   = `${total || 0} tests`;
@@ -322,12 +332,6 @@ function updateSummary() {
   $('cnt-failed').textContent  = `${failed  || 0} failed`;
   $('cnt-skipped').textContent = `${skipped || 0} skipped`;
   $('cnt-failed').dataset.nonzero = (failed || 0) > 0;
-}
-
-function patchTotals(patch) {
-  if (!patch) return;
-  Object.assign(state.totals, patch);
-  updateSummary();
 }
 
 // ── Select-all checkbox ───────────────────────────────────────────

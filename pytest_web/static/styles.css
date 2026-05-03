@@ -1,6 +1,11 @@
 /* ── Reset & base ──────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* HTML5 [hidden] gets overridden by any author rule that sets `display`
+   (e.g. `.test-row { display: flex }`) since they have equal specificity
+   and author origin beats UA origin. Force it. */
+[hidden] { display: none !important; }
+
 :root {
   --bg:           #16161e;
   --bg-surface:   #1e1e2e;

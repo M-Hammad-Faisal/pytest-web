@@ -218,13 +218,12 @@ async def run(body: RunRequest):
         extra_args = _strip_keyword_filters(extra_args)
         run_id = uuid.uuid4().hex
 
+        # Always pass -n explicitly so it overrides any -n N baked into the
+        # project's pytest.ini addopts. Disabling xdist via "-p no:xdist"
+        # would make any "-n" in addopts an unrecognised argument and crash
+        # pytest, so we keep xdist enabled and rely on it being a hard dep.
         cmd = [sys.executable, "-m", "pytest", *body.nodeids, *extra_args]
-        if body.workers > 1:
-            cmd += ["-n", str(body.workers)]
-        else:
-            # Explicitly disable xdist so pytest.ini addopts like "-n 6" are
-            # overridden and tests run sequentially in a single process.
-            cmd += ["-p", "no:xdist"]
+        cmd += ["-n", str(body.workers)]
         cmd += ["-p", "pytest_web.plugin"]
 
         webhook = f"http://{HOST}:{PORT}/internal/event"
@@ -285,7 +284,7 @@ async def run(body: RunRequest):
 
         display_cmd = " ".join(
             ["pytest"] + id_part + extra_args
-            + (["-n", str(body.workers)] if body.workers > 1 else [])
+            + ["-n", str(body.workers)]
             + ["-p", "pytest_web.plugin"]
         )
         return {"run_id": run_id, "command": display_cmd}

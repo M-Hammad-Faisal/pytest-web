@@ -6,6 +6,7 @@ import re
 import shlex
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -39,8 +40,6 @@ allure_lock: Optional[asyncio.Lock] = None
 
 # Regex to extract --alluredir path from pytest addopts
 _ALLUREDIR_RE = re.compile(r'--alluredir[= ](\S+)')
-# Regex to find a URL in allure server output
-_URL_RE = re.compile(r'https?://[^\s<>]+')
 
 
 @asynccontextmanager
@@ -65,6 +64,12 @@ async def broadcast(msg: dict) -> None:
         except Exception:
             dead.add(client)
     ws_clients.difference_update(dead)
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def _build_subprocess_kwargs() -> dict:
@@ -373,51 +378,6 @@ def _detect_allure_dir() -> Optional[str]:
     return None
 
 
-async def _capture_allure_url(p: asyncio.subprocess.Process, timeout: float = 15.0) -> Optional[str]:
-    """Read allure stdout/stderr until we find a URL or give up."""
-    found: list[str] = []
-
-    async def scan(stream: asyncio.StreamReader) -> None:
-        try:
-            loop     = asyncio.get_running_loop()
-            deadline = loop.time() + timeout
-            while not found:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    return
-                try:
-                    line = await asyncio.wait_for(
-                        stream.readline(), timeout=min(remaining, 2.0)
-                    )
-                except asyncio.TimeoutError:
-                    return
-                if not line:
-                    return
-                m = _URL_RE.search(line.decode(errors="replace"))
-                if m:
-                    found.append(m.group(0).rstrip(".>"))
-                    return
-        except (asyncio.CancelledError, Exception):
-            return
-
-    tasks = [
-        asyncio.create_task(scan(s))
-        for s in (p.stdout, p.stderr) if s
-    ]
-    if not tasks:
-        return None
-
-    await asyncio.wait(tasks, timeout=timeout + 1)
-    for t in tasks:
-        t.cancel()
-        try:
-            await t
-        except (asyncio.CancelledError, Exception):
-            pass
-
-    return found[0] if found else None
-
-
 async def _kill_allure() -> None:
     """Kill the current allure process if running. Must be called under allure_lock."""
     global allure_proc
@@ -459,7 +419,8 @@ class AllureOpenRequest(BaseModel):
 async def allure_open(body: AllureOpenRequest):
     global allure_proc
 
-    if not shutil.which("allure"):
+    allure_bin = shutil.which("allure")
+    if not allure_bin:
         raise HTTPException(400, "allure command not found on PATH")
 
     results_path = Path(body.results_dir)
@@ -487,31 +448,45 @@ async def allure_open(body: AllureOpenRequest):
             except Exception:
                 pass  # history copy failure is non-fatal
 
+        # Clean the report output dir manually — `--clean` was removed in newer
+        # allure versions and causes "Unknown Syntax Error" on allure 3+.
+        if report_path.exists():
+            try:
+                shutil.rmtree(report_path)
+            except Exception:
+                pass
+
         # Generate the report (blocking but non-fatal to hold the lock here —
         # allure_lock is only used by allure routes, not the test runner)
         gen = await asyncio.create_subprocess_exec(
-            "allure", "generate", str(results_path), "-o", str(report_path), "--clean",
-            cwd=PROJECT_CWD,
+            allure_bin, "generate", str(results_path), "-o", str(report_path),
+            cwd=str(results_path.parent),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, stderr_bytes = await gen.communicate()
+        # Allure (Java CLI) writes errors to stdout, not stderr — capture both
+        stdout_bytes, stderr_bytes = await gen.communicate()
         if gen.returncode != 0:
-            err = stderr_bytes.decode(errors="replace").strip()
-            raise HTTPException(500, f"allure generate failed: {err}")
+            err = (stdout_bytes + stderr_bytes).decode(errors="replace").strip()
+            raise HTTPException(500, f"allure generate failed: {err or f'exit code {gen.returncode}'}")
 
-        # Serve the generated report
+        # Serve the generated report with Python's built-in HTTP server.
+        # `allure open` was removed in allure 3; using Python's server means
+        # identical behaviour on allure 2 and 3, a deterministic URL, and
+        # reliable stop/restart without any stdout parsing.
+        port = _find_free_port()
         p = await asyncio.create_subprocess_exec(
-            "allure", "open", str(report_path),
-            cwd=PROJECT_CWD,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            sys.executable, "-m", "http.server",
+            "--bind", "127.0.0.1",
+            "--directory", str(report_path),
+            str(port),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
             **_build_subprocess_kwargs(),
         )
         allure_proc = p
 
-    # URL capture is outside the lock — just reads from the process stdout/stderr
-    url = await _capture_allure_url(p)
+    url = f"http://127.0.0.1:{port}/"
     return {"url": url, "serving": True}
 
 

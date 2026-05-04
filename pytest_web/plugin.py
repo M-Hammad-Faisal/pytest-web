@@ -3,6 +3,7 @@ Pytest plugin injected via -p pytest_web.plugin during /discover and /run.
 Reads env vars set by the FastAPI server; all behaviour is a no-op when they
 are absent so the plugin is safe to load in any pytest run.
 """
+
 import json
 import os
 import threading
@@ -38,6 +39,7 @@ def _post(payload: dict) -> None:
 
 # ── Collection hooks ──────────────────────────────────────────────
 
+
 def pytest_sessionstart(session) -> None:
     global _session
     _session = session
@@ -63,11 +65,13 @@ def pytest_collection_finish() -> None:
     # Synchronous POST — safe here because no tests have started yet.
     # Guarantees session_start arrives before the first test_start event.
     if WEBHOOK:
-        body = json.dumps({
-            "event": "session_start",
-            "total": _item_count,
-            "run_id": RUN_ID,
-        }).encode()
+        body = json.dumps(
+            {
+                "event": "session_start",
+                "total": _item_count,
+                "run_id": RUN_ID,
+            }
+        ).encode()
         req = urllib.request.Request(
             WEBHOOK, data=body, headers={"Content-Type": "application/json"}
         )
@@ -79,28 +83,33 @@ def pytest_collection_finish() -> None:
 
 # ── Run hooks ─────────────────────────────────────────────────────
 
+
 def pytest_runtest_logstart(nodeid: str, location) -> None:
     _post({"event": "test_start", "nodeid": nodeid})
 
 
 def pytest_runtest_logreport(report) -> None:
     if report.when == "call":
-        _post({
-            "event": "test_end",
-            "nodeid": report.nodeid,
-            "outcome": report.outcome,
-            "duration": round(report.duration, 4),
-            "longrepr": str(report.longrepr) if report.failed else None,
-        })
+        _post(
+            {
+                "event": "test_end",
+                "nodeid": report.nodeid,
+                "outcome": report.outcome,
+                "duration": round(report.duration, 4),
+                "longrepr": str(report.longrepr) if report.failed else None,
+            }
+        )
     elif report.when == "setup" and report.skipped:
         # Skipped tests never reach "call" phase
-        _post({
-            "event": "test_end",
-            "nodeid": report.nodeid,
-            "outcome": "skipped",
-            "duration": 0.0,
-            "longrepr": None,
-        })
+        _post(
+            {
+                "event": "test_end",
+                "nodeid": report.nodeid,
+                "outcome": "skipped",
+                "duration": 0.0,
+                "longrepr": None,
+            }
+        )
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:

@@ -1,27 +1,28 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytest-web"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Local web UI for running and monitoring pytest suites"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
-    { name = "Usama", email = "usamajalal17@gmail.com" }
+    { name = "Usama", email = "usamajalal17@gmail.com" },
+    { name = "Muhammad Hammad Faisal", email = "hammadfaisal178@gmail.com" },
 ]
 keywords = ["pytest", "testing", "web", "ui", "runner"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Testing",
     "Topic :: Utilities",
 ]
@@ -33,17 +34,78 @@ dependencies = [
     "pytest-xdist>=3.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "build>=1.2",
+    "setuptools-scm>=8",
+    "twine>=5.0",
+    "ruff>=0.11",
+    "pre-commit>=4.0",
+    "cowsay>=6.1",
+]
+
 [project.urls]
 Homepage   = "https://github.com/usamaJ17/pytest-web"
 Repository = "https://github.com/usamaJ17/pytest-web"
 Issues     = "https://github.com/usamaJ17/pytest-web/issues"
 
 [project.scripts]
-pytest-web = "pytest_web.cli:main"
+pytest-web       = "pytest_web.cli:main"
+pytest-web-build = "pytest_web.build:main"
 
 [tool.setuptools.packages.find]
 where   = ["."]
 include = ["pytest_web*"]
 
 [tool.setuptools.package-data]
-pytest_web = ["static/*"]
+pytest_web = ["static/*", "py.typed"]
+
+[tool.setuptools_scm]
+write_to = "pytest_web/_version.py"
+
+# ── Poetry compatibility stub ────────────────────────────────────────
+# This project uses setuptools + setuptools-scm as its build backend.
+# The version here is a placeholder — real version comes from the git tag.
+# Do not run `poetry build` or `poetry publish`; use `pytest-web-build` instead.
+[tool.poetry]
+version = "0.0.0"
+
+[tool.poetry.dependencies]
+python          = ">=3.9"
+fastapi         = ">=0.110"
+"uvicorn[standard]" = ">=0.27"
+pytest          = ">=7.0"
+pytest-xdist    = ">=3.0"
+
+[tool.poetry.group.dev.dependencies]
+build           = ">=1.2"
+setuptools-scm  = ">=8"
+twine           = ">=5.0"
+ruff            = ">=0.11"
+pre-commit      = ">=4.0"
+cowsay          = ">=6.1"
+
+# ── Ruff — linter + formatter ────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line length — handled by ruff format
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pytest_web"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

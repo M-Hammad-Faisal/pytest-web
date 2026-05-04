@@ -30,7 +30,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 # ── Shared state (single-process, single-run-at-a-time) ──────────
 ws_clients: set[WebSocket] = set()
-current_run: Optional[dict] = None   # {run_id, totals, test_states}
+current_run: Optional[dict] = None  # {run_id, totals, test_states}
 proc: Optional[asyncio.subprocess.Process] = None
 proc_lock: Optional[asyncio.Lock] = None
 
@@ -39,13 +39,13 @@ allure_proc: Optional[asyncio.subprocess.Process] = None
 allure_lock: Optional[asyncio.Lock] = None
 
 # Regex to extract --alluredir path from pytest addopts
-_ALLUREDIR_RE = re.compile(r'--alluredir[= ](\S+)')
+_ALLUREDIR_RE = re.compile(r"--alluredir[= ](\S+)")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global proc_lock, allure_lock
-    proc_lock  = asyncio.Lock()
+    proc_lock = asyncio.Lock()
     allure_lock = asyncio.Lock()
     yield
 
@@ -55,6 +55,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 # ── Helpers ───────────────────────────────────────────────────────
+
 
 async def broadcast(msg: dict) -> None:
     dead: set[WebSocket] = set()
@@ -80,6 +81,7 @@ def _build_subprocess_kwargs() -> dict:
 
 # ── Request models ────────────────────────────────────────────────
 
+
 class DiscoverRequest(BaseModel):
     args: str = ""
 
@@ -92,6 +94,7 @@ class RunRequest(BaseModel):
 
 
 # ── Routes ────────────────────────────────────────────────────────
+
 
 @app.get("/")
 async def index():
@@ -106,7 +109,10 @@ async def options():
     """
     try:
         p = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "pytest", "--help",
+            sys.executable,
+            "-m",
+            "pytest",
+            "--help",
             cwd=PROJECT_CWD,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -122,9 +128,15 @@ async def options():
     # `pytest --help` groups options under headers like "custom options:".
     # We pick out option lines belonging to non-pytest-builtin groups.
     builtin_groups = {
-        "general:", "reporting:", "collection:", "test session debugging and configuration:",
-        "logging:", "[pytest] ini-options in the first pytest.ini|tox.ini|setup.cfg|pyproject.toml file found:",
-        "environment variables:", "options:", "positional arguments:",
+        "general:",
+        "reporting:",
+        "collection:",
+        "test session debugging and configuration:",
+        "logging:",
+        "[pytest] ini-options in the first pytest.ini|tox.ini|setup.cfg|pyproject.toml file found:",
+        "environment variables:",
+        "options:",
+        "positional arguments:",
     }
     in_custom_group = False
     for raw_line in text.splitlines():
@@ -167,9 +179,13 @@ async def discover(body: DiscoverRequest):
 
     try:
         cmd = [
-            sys.executable, "-m", "pytest",
-            "--collect-only", "-q",
-            "-p", "pytest_web.plugin",
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "-q",
+            "-p",
+            "pytest_web.plugin",
             *extra_args,
         ]
         env = {**os.environ, "PYTEST_WEB_COLLECT_FILE": collect_file}
@@ -215,9 +231,9 @@ def _strip_keyword_filters(args: list[str]) -> list[str]:
     while i < len(args):
         arg = args[i]
         if arg in ("-k", "-m"):
-            i += 2          # skip flag and its separate value
+            i += 2  # skip flag and its separate value
         elif arg.startswith(("-k=", "-m=")):
-            i += 1          # skip combined -k=expr form
+            i += 1  # skip combined -k=expr form
         else:
             result.append(arg)
             i += 1
@@ -250,8 +266,8 @@ async def run(body: RunRequest):
         for k, v in body.env.items():
             k = str(k).strip()
             v = str(v).strip().strip('"').strip("'")
-            if '=' in k:
-                k, _, v = k.partition('=')
+            if "=" in k:
+                k, _, v = k.partition("=")
                 k = k.strip()
                 v = v.strip().strip('"').strip("'")
             if k:
@@ -287,7 +303,7 @@ async def run(body: RunRequest):
             # In xdist, pytest_runtest_logreport fires once in the worker and
             # is then re-fired in the master via report forwarding — without
             # this dedup, every test would be counted twice in the totals.
-            "started":  set(),
+            "started": set(),
             "finished": set(),
         }
 
@@ -301,7 +317,9 @@ async def run(body: RunRequest):
             id_part = body.nodeids[:3] + [f"...({n - 3} more)"]
 
         display_cmd = " ".join(
-            ["pytest"] + id_part + extra_args
+            ["pytest"]
+            + id_part
+            + extra_args
             + ["-n", str(body.workers)]
             + ["-p", "pytest_web.plugin"]
         )
@@ -318,7 +336,8 @@ async def cancel():
         if sys.platform == "win32":
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                check=False, capture_output=True,
+                check=False,
+                capture_output=True,
             )
         else:
             os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
@@ -330,6 +349,7 @@ async def cancel():
 
 # ── Allure helpers ────────────────────────────────────────────────
 
+
 def _detect_allure_dir() -> Optional[str]:
     """Parse pytest config files to find the --alluredir path."""
     cwd = Path(PROJECT_CWD)
@@ -339,7 +359,7 @@ def _detect_allure_dir() -> Optional[str]:
         if not m:
             return None
         # Strip trailing quotes/commas (present when path is inside a TOML list)
-        return m.group(1).strip('"\'').rstrip(',')
+        return m.group(1).strip("\"'").rstrip(",")
 
     # pytest.ini  →  [pytest] addopts
     for ini_path in [cwd / "pytest.ini", cwd / "tox.ini"]:
@@ -387,7 +407,8 @@ async def _kill_allure() -> None:
         if sys.platform == "win32":
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(allure_proc.pid)],
-                check=False, capture_output=True,
+                check=False,
+                capture_output=True,
             )
         else:
             os.killpg(os.getpgid(allure_proc.pid), signal.SIGTERM)
@@ -402,12 +423,13 @@ async def _kill_allure() -> None:
 
 # ── Allure routes ─────────────────────────────────────────────────
 
+
 @app.get("/allure/status")
 async def allure_status():
     return {
-        "available":    shutil.which("allure") is not None,
+        "available": shutil.which("allure") is not None,
         "detected_dir": _detect_allure_dir(),
-        "serving":      allure_proc is not None and allure_proc.returncode is None,
+        "serving": allure_proc is not None and allure_proc.returncode is None,
     }
 
 
@@ -459,7 +481,11 @@ async def allure_open(body: AllureOpenRequest):
         # Generate the report (blocking but non-fatal to hold the lock here —
         # allure_lock is only used by allure routes, not the test runner)
         gen = await asyncio.create_subprocess_exec(
-            allure_bin, "generate", str(results_path), "-o", str(report_path),
+            allure_bin,
+            "generate",
+            str(results_path),
+            "-o",
+            str(report_path),
             cwd=str(results_path.parent),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -468,7 +494,9 @@ async def allure_open(body: AllureOpenRequest):
         stdout_bytes, stderr_bytes = await gen.communicate()
         if gen.returncode != 0:
             err = (stdout_bytes + stderr_bytes).decode(errors="replace").strip()
-            raise HTTPException(500, f"allure generate failed: {err or f'exit code {gen.returncode}'}")
+            raise HTTPException(
+                500, f"allure generate failed: {err or f'exit code {gen.returncode}'}"
+            )
 
         # Serve the generated report with Python's built-in HTTP server.
         # `allure open` was removed in allure 3; using Python's server means
@@ -476,9 +504,13 @@ async def allure_open(body: AllureOpenRequest):
         # reliable stop/restart without any stdout parsing.
         port = _find_free_port()
         p = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "http.server",
-            "--bind", "127.0.0.1",
-            "--directory", str(report_path),
+            sys.executable,
+            "-m",
+            "http.server",
+            "--bind",
+            "127.0.0.1",
+            "--directory",
+            str(report_path),
             str(port),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
@@ -539,14 +571,16 @@ async def internal_event(request: Request):
         totals["running"] = max(0, totals.get("running", 0) - 1)
         if outcome in ("passed", "failed", "skipped"):
             totals[outcome] = totals.get(outcome, 0) + 1
-        await broadcast({
-            "type": "test_end",
-            "run_id": run_id,
-            "nodeid": nodeid,
-            "outcome": outcome,
-            "duration": body.get("duration"),
-            "longrepr": body.get("longrepr"),
-        })
+        await broadcast(
+            {
+                "type": "test_end",
+                "run_id": run_id,
+                "nodeid": nodeid,
+                "outcome": outcome,
+                "duration": body.get("duration"),
+                "longrepr": body.get("longrepr"),
+            }
+        )
 
     return {"ok": True}
 
@@ -557,15 +591,23 @@ async def ws_endpoint(websocket: WebSocket):
     ws_clients.add(websocket)
 
     # Send a state snapshot so a refreshed browser can rebuild current state
-    await websocket.send_json({
-        "type": "snapshot",
-        "run_id": current_run["run_id"] if current_run else None,
-        "running": current_run is not None,
-        "totals": current_run["totals"] if current_run else {
-            "total": 0, "passed": 0, "failed": 0, "skipped": 0, "running": 0,
-        },
-        "test_states": current_run["test_states"] if current_run else {},
-    })
+    await websocket.send_json(
+        {
+            "type": "snapshot",
+            "run_id": current_run["run_id"] if current_run else None,
+            "running": current_run is not None,
+            "totals": current_run["totals"]
+            if current_run
+            else {
+                "total": 0,
+                "passed": 0,
+                "failed": 0,
+                "skipped": 0,
+                "running": 0,
+            },
+            "test_states": current_run["test_states"] if current_run else {},
+        }
+    )
 
     try:
         while True:
@@ -576,6 +618,7 @@ async def ws_endpoint(websocket: WebSocket):
 
 # ── Background streaming task ─────────────────────────────────────
 
+
 async def _stream_proc(p: asyncio.subprocess.Process, run_id: str) -> None:
     global current_run, proc
 
@@ -584,12 +627,14 @@ async def _stream_proc(p: asyncio.subprocess.Process, run_id: str) -> None:
             line = await stream.readline()
             if not line:
                 break
-            await broadcast({
-                "type": "log",
-                "run_id": run_id,
-                "stream": stream_name,
-                "line": line.decode(errors="replace").rstrip(),
-            })
+            await broadcast(
+                {
+                    "type": "log",
+                    "run_id": run_id,
+                    "stream": stream_name,
+                    "line": line.decode(errors="replace").rstrip(),
+                }
+            )
 
     await asyncio.gather(
         _read(p.stdout, "stdout"),
@@ -604,9 +649,11 @@ async def _stream_proc(p: asyncio.subprocess.Process, run_id: str) -> None:
             current_run = None
             proc = None
 
-    await broadcast({
-        "type": "session_end",
-        "run_id": run_id,
-        "exit_status": p.returncode,
-        "totals": saved_totals or {},
-    })
+    await broadcast(
+        {
+            "type": "session_end",
+            "run_id": run_id,
+            "exit_status": p.returncode,
+            "totals": saved_totals or {},
+        }
+    )

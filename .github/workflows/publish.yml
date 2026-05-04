@@ -3,13 +3,17 @@ name: Publish to PyPI
 on:
   push:
     tags:
-      - "v*"   # triggers on v0.1.0, v0.2.0, etc.
+      - "v*"   # triggers on v0.2.0, v0.3.0, etc.
 
 jobs:
+  # Gate: CI must be green before publishing
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   build-and-publish:
+    needs: ci
     runs-on: ubuntu-latest
 
-    # Required for PyPI Trusted Publishing (no API token needed)
     environment:
       name: pypi
       url: https://pypi.org/p/pytest-web
@@ -17,15 +21,17 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
         with:
-          python-version: "3.11"
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
 
       - name: Build package
         run: |
-          pip install build
+          pip install build setuptools-scm
           python -m build
 
       - name: Publish to PyPI

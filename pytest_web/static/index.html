@@ -12,7 +12,16 @@
   <!-- ── Header ─────────────────────────────────────────────── -->
   <header id="header">
     <div class="brand">⚗ pytest-web</div>
-    <div id="ws-status" class="ws-status" title="Disconnected" data-connected="false">●</div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <select id="theme-select" class="theme-select" title="Switch theme" aria-label="Theme">
+        <option value="light">☀ Light</option>
+        <option value="dark">◑ Dark</option>
+        <option value="purple">◈ Purple</option>
+        <option value="pink">✿ Pink</option>
+        <option value="forest">❧ Forest</option>
+      </select>
+      <div id="ws-status" class="ws-status" title="Disconnected" data-connected="false">●&nbsp;WS</div>
+    </div>
   </header>
 
   <!-- ── Config panel ───────────────────────────────────────── -->
@@ -121,9 +130,9 @@
     <span class="allure-label">Allure</span>
     <input id="allure-dir" type="text" class="allure-dir-input"
            placeholder="results dir (auto-detected)" autocomplete="off" spellcheck="false">
-    <button id="btn-allure-open" class="btn btn-ghost btn-sm" disabled
+    <button id="btn-allure-open" class="btn btn-primary btn-sm" disabled
             title="Checking allure…">Open Report</button>
-    <button id="btn-allure-stop" class="btn btn-ghost btn-sm" hidden>Stop</button>
+    <button id="btn-allure-stop" class="btn btn-danger btn-sm" hidden>Stop</button>
     <a id="allure-url" class="allure-url-link" hidden target="_blank" rel="noopener noreferrer"></a>
   </div>
 

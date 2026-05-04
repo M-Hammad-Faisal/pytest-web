@@ -196,12 +196,10 @@ function buildTestList(nodeids) {
     return;
   }
 
-  // Initialise state entries
   for (const nodeid of nodeids) {
     state.tests.set(nodeid, { selected: true, status: STATUS.IDLE, duration: null, longrepr: null });
   }
 
-  // Group by file (first segment before ::)
   const groups = new Map();
   for (const nodeid of nodeids) {
     const file = nodeid.split('::')[0];
@@ -224,7 +222,6 @@ function buildFileGroup(file, nodeids) {
   const group = mk('div', 'file-group');
   group.dataset.file = file;
 
-  // Header
   const header = mk('div', 'file-header');
   const arrow  = mk('span', 'group-arrow', '▾');
   const name   = mk('span', 'file-name', file);
@@ -238,7 +235,6 @@ function buildFileGroup(file, nodeids) {
   });
   group.appendChild(header);
 
-  // Rows
   const body = mk('div', 'group-body');
   for (const nodeid of nodeids) body.appendChild(buildTestRow(nodeid));
   group.appendChild(body);
@@ -267,7 +263,7 @@ function buildTestRow(nodeid) {
   const parts    = nodeid.split('::');
   const nameText = (parts.length > 1 ? parts.slice(1) : parts).join(' › ');
   const nameEl   = mk('span', 'test-name', nameText);
-  nameEl.title   = nodeid;  // full id on hover
+  nameEl.title   = nodeid;
 
   const dur = mk('span', 'test-duration');
 
@@ -456,7 +452,6 @@ function renderEnvVars() {
 
   if (state.envVars.length === 0) return;
 
-  // Column header row
   const header = mk('div', 'env-col-header');
   header.innerHTML =
     '<span class="env-col-label">Name</span>' +
@@ -467,7 +462,6 @@ function renderEnvVars() {
   state.envVars.forEach((ev, i) => {
     const row = mk('div', 'env-row');
 
-    // ── Name field ────────────────────────────────────────────
     const keyInput       = mk('input');
     keyInput.type        = 'text';
     keyInput.className   = 'env-key';
@@ -500,7 +494,6 @@ function renderEnvVars() {
     keyInput.addEventListener('blur',  trySplitKey);
     keyInput.addEventListener('paste', () => setTimeout(trySplitKey, 0));
 
-    // ── Value field ───────────────────────────────────────────
     const valInput        = mk('input');
     valInput.type         = 'text';
     valInput.className    = 'env-val';
@@ -520,7 +513,6 @@ function renderEnvVars() {
       savePrefs();
     });
 
-    // ── Delete button ─────────────────────────────────────────
     const rm = mk('button', 'btn btn-ghost btn-xs env-rm', '✕');
     rm.title = 'Remove';
     rm.addEventListener('click', () => { state.envVars.splice(i, 1); renderEnvVars(); savePrefs(); });
@@ -627,10 +619,8 @@ async function runSelected() {
 
     if (res.status === 409) { showError('A run is already in progress.'); return; }
     const data = await res.json();
-    // Update command preview to show the exact command that's running
     if (data.command) $('command-text').textContent = data.command;
-    // Flip UI to running state immediately — don't wait on the WS round-trip
-    // (cancel button must work even if a webhook is delayed or dropped)
+    // Flip UI immediately — cancel must work even if the WS webhook is delayed or dropped
     state.runId = data.run_id || null;
     setRunningUI(true);
     savePrefs();
@@ -847,11 +837,10 @@ function initListeners() {
     renderEnvVars();
   });
 
-  // Param builder
   $('param-select').addEventListener('change', syncParamValueInput);
   $('param-value').addEventListener('keydown', e => { if (e.key === 'Enter') addParam(); });
   $('btn-add-param').addEventListener('click', addParam);
-  syncParamValueInput(); // set initial state
+  syncParamValueInput();
 
   $('btn-copy').addEventListener('click', () => {
     navigator.clipboard?.writeText($('command-text').textContent).then(() => {
@@ -874,8 +863,31 @@ function initListeners() {
   });
 }
 
+// ── Theme ─────────────────────────────────────────────────────────
+const THEMES = ['light', 'dark', 'purple', 'pink', 'forest'];
+
+function applyTheme(name) {
+  if (!THEMES.includes(name)) name = 'light';
+  document.documentElement.dataset.theme = name;
+  const sel = document.getElementById('theme-select');
+  if (sel) sel.value = name;
+  try { localStorage.setItem('pw.theme', name); } catch (_) {}
+}
+
+function loadTheme() {
+  const saved = localStorage.getItem('pw.theme') || 'light';
+  applyTheme(saved);
+}
+
+function initThemeSwitcher() {
+  const sel = document.getElementById('theme-select');
+  if (sel) sel.addEventListener('change', () => applyTheme(sel.value));
+}
+
 // ── Boot ──────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  loadTheme();
+  initThemeSwitcher();
   initListeners();
   loadPrefs();
   initWS();
